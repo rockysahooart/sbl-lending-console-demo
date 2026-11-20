@@ -63,8 +63,8 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
       {locked && (
         <InlineNotification kind="info" lowContrast hideCloseButton className="!max-w-none mb-6" title="Submitted to underwriting" subtitle={`Submitted ${req.submittedAt}. This request is read-only.`} />
       )}
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_340px] gap-6 items-start">
-        <nav aria-label="Request sections" className="lg:sticky lg:top-6 bg-[var(--cds-layer-01)] p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[224px_minmax(0,1fr)_340px] gap-8 items-start">
+        <nav aria-label="Request sections" className="lg:sticky lg:top-6">
           <ProgressIndicator vertical currentIndex={SECTIONS.findIndex((x) => x.key === section)} onChange={(i: number) => go(SECTIONS[i].key)} spaceEqually={false}>
             {SECTIONS.map((sec) => {
               const st = m.sectionState(sec.key);
@@ -80,7 +80,7 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
             })}
           </ProgressIndicator>
         </nav>
-        <fieldset disabled={locked} className="min-w-0 bg-[var(--cds-layer-01)]">
+        <fieldset disabled={locked} className="min-w-0">
           <legend className="sr-only">{SECTIONS.find((x) => x.key === section)!.label}</legend>
           {section === 'client' && <ClientSection m={m} onNext={() => go('collateral')} />}
           {section === 'collateral' && <CollateralSection m={m} onNext={() => go('structure')} />}
@@ -118,7 +118,7 @@ function RequestHeader({ m }: { m: RequestModel }) {
 
 function NextBar({ label, onNext }: { label: string; onNext: () => void }) {
   return (
-    <div className="px-6 py-4 flex items-center justify-between gap-4 border-t border-[var(--cds-border-subtle-01)]">
+    <div className="mt-8 py-4 flex items-center justify-between gap-4 border-t border-[var(--cds-border-subtle-01)]">
       <p className="t-helper-01 text-[var(--cds-text-secondary)]">Changes are saved automatically.</p>
       <Button renderIcon={ArrowRight} onClick={onNext}>{label}</Button>
     </div>
@@ -377,16 +377,16 @@ function CollateralSection({ m, onNext }: { m: RequestModel; onNext: () => void 
   return (
     <div>
       <Panel id="collateral" title="Collateral and evaluation" description="Accounts in the client relationship. Select the accounts to pledge; estimated borrowing power updates immediately.">
-        <dl className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[var(--cds-border-subtle-01)] border border-[var(--cds-border-subtle-01)] mb-6">
+        <dl className="grid grid-cols-2 min-[1440px]:grid-cols-4 gap-2 mb-8">
           {[
             ['Pledged market value', <Money key="a" value={ev.pledgedValue} />],
             ['Estimated borrowing power', <Money key="b" value={ev.total} />],
             ['Review required', ev.needsReview],
             ['Not eligible', ev.ineligible],
           ].map(([l, v]) => (
-            <div key={l as string} className="bg-[var(--cds-layer-01)] px-4 py-3">
+            <div key={l as string} className={cx('bg-[var(--cds-layer-01)] px-4 py-4', l === 'Estimated borrowing power' && 'shadow-[inset_0_2px_0_var(--cds-interactive)]')}>
               <dt className="t-label-01 text-[var(--cds-text-secondary)]">{l}</dt>
-              <dd className="t-heading-03 tabular-nums mt-1">{v}</dd>
+              <dd className={cx('t-heading-04 tabular-nums mt-1', l === 'Estimated borrowing power' && 'font-semibold')}>{v}</dd>
             </div>
           ))}
         </dl>
@@ -409,7 +409,7 @@ function CollateralSection({ m, onNext }: { m: RequestModel; onNext: () => void 
                 const st = STATUS[r.status];
                 const requested = req.reviewRequested[r.account.id];
                 return [
-                  <TableRow key={r.account.id}>
+                  <TableRow key={r.account.id} className={cx('[&>td]:!border-b-0', r.pledged && 'is-selected-row')}>
                     <TableCell>
                       <Checkbox
                         id={`pledge-${r.account.id}`}
@@ -429,7 +429,7 @@ function CollateralSection({ m, onNext }: { m: RequestModel; onNext: () => void 
                     <TableCell className="num font-semibold"><Money value={r.lendable} /></TableCell>
                     <TableCell><Tag tone={st.tone}>{st.label}</Tag></TableCell>
                   </TableRow>,
-                  <TableRow key={r.account.id + '-x'} className="[&>td]:!border-t-0">
+                  <TableRow key={r.account.id + '-x'} className={cx('[&>td]:!border-t-0', r.pledged && 'is-selected-row')}>
                     <TableCell />
                     <TableCell colSpan={6}>
                       <div className="flex flex-wrap items-center justify-between gap-3 pb-2">
@@ -639,7 +639,7 @@ function ReviewSection({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (s: Se
   const events = audit.filter((e) => e.requestId === s.requestId);
   return (
     <div>
-      <section aria-labelledby="readiness" className="px-6 py-6 border-b border-[var(--cds-border-subtle-01)]">
+      <section aria-labelledby="readiness" className="pb-8 border-b border-[var(--cds-border-subtle-00)]">
         <h3 id="readiness" tabIndex={-1} className="t-heading-03 mb-5">Submission readiness</h3>
         {attempted && open.length > 0 && (
           <InlineNotification kind="error" lowContrast hideCloseButton className="!max-w-none mb-5" title={`${open.length} item${open.length > 1 ? 's' : ''} must be resolved before submission`} subtitle="Select Resolve next to an item to go to the section where it is completed." />
@@ -706,7 +706,7 @@ function ReviewSection({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (s: Se
           </AccordionItem>
         </Accordion>
       </Panel>
-      <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--cds-border-subtle-01)]">
+      <div className="mt-8 py-4 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--cds-border-subtle-01)]">
         <p className="t-helper-01 text-[var(--cds-text-secondary)]">
           {role === 'Credit Officer' ? 'Submission is completed by the relationship banker.' : open.length ? `${open.length} item${open.length > 1 ? 's' : ''} open.` : 'All readiness checks are complete.'}
         </p>
@@ -734,14 +734,12 @@ function SummaryPanel({ m, onGo, section }: { m: RequestModel; onGo: (s: Section
   const open = readiness.filter((r) => !r.done);
   return (
     <aside aria-label="Financial summary and readiness" className="xl:sticky xl:top-6 bg-[var(--cds-layer-01)] lg:col-span-2 xl:col-span-1">
-      <div className="px-5 py-4 border-b border-[var(--cds-border-subtle-01)]">
-        <h2 className="t-heading-02">Financial summary</h2>
-      </div>
-      <div className="px-5 py-4 space-y-3 border-b border-[var(--cds-border-subtle-01)]">
-        <dl className="space-y-3">
-          <div className="flex justify-between t-body-01"><dt className="text-[var(--cds-text-secondary)]">Requested amount</dt><dd className="tabular-nums"><Money value={req.requested} /></dd></div>
-          <div className="flex justify-between t-body-01"><dt className="text-[var(--cds-text-secondary)]">Estimated borrowing power</dt><dd className="tabular-nums font-semibold" aria-live="polite"><Money value={ev.total} /></dd></div>
-          <div className="flex justify-between t-body-01"><dt className="text-[var(--cds-text-secondary)]">Coverage ratio</dt><dd className={cx('tabular-nums', cov < 1 && 'text-[var(--cds-text-error)]')}>{fmtPct(cov)}</dd></div>
+      <div className="px-5 pt-5 pb-5 space-y-3 border-b border-[var(--cds-border-subtle-01)]">
+        <h2 className="t-heading-02 pb-1">Financial summary</h2>
+        <dl className="space-y-2">
+          <div className="flex justify-between items-baseline gap-3"><dt className="t-body-01 text-[var(--cds-text-secondary)]">Requested amount</dt><dd className="t-heading-03 tabular-nums"><Money value={req.requested} /></dd></div>
+          <div className="flex justify-between items-baseline gap-3"><dt className="t-body-01 text-[var(--cds-text-secondary)]">Estimated borrowing power</dt><dd className="t-heading-03 tabular-nums !font-semibold" aria-live="polite"><Money value={ev.total} /></dd></div>
+          <div className="flex justify-between items-baseline gap-3 t-body-01"><dt className="text-[var(--cds-text-secondary)]">Coverage ratio</dt><dd className={cx('tabular-nums font-semibold', cov < 1 && 'text-[var(--cds-text-error)]')}>{fmtPct(cov)}</dd></div>
         </dl>
         <div className="h-1 bg-[var(--cds-border-subtle-01)]" aria-hidden="true"><div className={cx('h-full', cov >= 1 ? 'bg-[var(--cds-support-success)]' : 'bg-[var(--cds-support-error)]')} style={{ width: `${Math.min(cov, 1) * 100}%` }} /></div>
         <p className={cx('t-helper-01', diff >= 0 ? 'text-[var(--cds-text-secondary)]' : 'text-[var(--cds-text-error)]')}>{diff >= 0 ? `${fmtMoney(diff)} above the requested amount` : `${fmtMoney(-diff)} below the requested amount`}</p>
@@ -756,7 +754,7 @@ function SummaryPanel({ m, onGo, section }: { m: RequestModel; onGo: (s: Section
         </div>
         <p className="t-helper-01 text-[var(--cds-text-secondary)]">Indicative estimate. Not a credit decision or an offer of credit.</p>
       </div>
-      <div className="px-5 py-4">
+      <div className="px-5 py-5">
         <div className="flex justify-between items-baseline">
           <h2 className="t-heading-02">Readiness</h2>
           <span className="t-helper-01 tabular-nums text-[var(--cds-text-secondary)]">{done} of {readiness.length} complete</span>

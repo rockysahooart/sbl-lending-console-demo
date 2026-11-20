@@ -202,21 +202,22 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
         </div>
       </TableContainer>
 
-      <section aria-label={`Detail for ${cur.client}`} className="bg-[var(--cds-layer-01)] mt-8">
-        <div className="px-6 py-5 border-b border-[var(--cds-border-subtle-01)] flex flex-wrap items-center justify-between gap-4">
+      <section aria-label={`Detail for ${cur.client}`} className="mt-10 border-t-2 border-[var(--cds-interactive)]">
+        <div className="py-5 border-b border-[var(--cds-border-subtle-00)] flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="t-heading-03">{cur.client}</h2>
             <p className="t-helper-01 text-[var(--cds-text-secondary)]">{cur.id} · Approved {cur.approvedOn}</p>
           </div>
           {cur.scenarioId && <Button kind="ghost" size="sm" onClick={() => onRoute({ page: 'request', id: cur.scenarioId!, section: 'review' })}>View origination record</Button>}
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 lg:divide-x divide-[var(--cds-border-subtle-01)]">
-          <div className="px-6 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="py-6 lg:pr-0">
+            <div className="bg-[var(--cds-layer-01)] p-5">
             <h3 className="t-heading-02 mb-3">Credit</h3>
-            <dl className="space-y-2 t-body-01">
+            <dl className="space-y-2 t-body-01 tabular-nums">
               <div className="flex justify-between"><dt className="text-[var(--cds-text-secondary)]">Approved credit limit</dt><dd><Money value={cur.limit} /></dd></div>
               <div className="flex justify-between"><dt className="text-[var(--cds-text-secondary)]">Outstanding balance</dt><dd><Money value={cur.outstanding} /></dd></div>
-              <div className="flex justify-between font-semibold"><dt>Available credit</dt><dd><Money value={cur.limit - cur.outstanding} /></dd></div>
+              <div className="flex justify-between items-baseline font-semibold pt-1"><dt>Available credit</dt><dd className="t-heading-03 !font-semibold"><Money value={cur.limit - cur.outstanding} /></dd></div>
             </dl>
             <h3 className="t-heading-02 mt-6 mb-2">Collateral coverage</h3>
             <div className="relative h-2 bg-[var(--cds-border-subtle-01)]" role="img" aria-label={`LTV ${fmtPct(ltv(cur), 1)}; maintenance threshold ${fmtPct(cur.maintenanceLtv)}`}>
@@ -241,8 +242,9 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
                 />
               )
             )}
+            </div>
           </div>
-          <div className="px-6 py-6">
+          <div className="py-6">
             <h3 className="t-heading-02 mb-3">Collateral monitoring</h3>
             <Table size="sm" aria-label="Collateral monitoring">
               <TableHead><TableRow><TableHeader>Account</TableHeader><TableHeader className="num">Market value</TableHeader><TableHeader className="num">30-day change</TableHeader></TableRow></TableHead>
@@ -257,7 +259,7 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
               </TableBody>
             </Table>
           </div>
-          <div className="px-6 py-6">
+          <div className="py-6">
             <h3 className="t-heading-02 mb-3">Documentation</h3>
             <ul className="space-y-2 t-body-01">
               {cur.docs.map((d) => (

@@ -108,7 +108,7 @@ export function KV({ label, value, mono }: { label: string; value: ReactNode; mo
 /** A section within the white content layer: heading + body, separated by a 1px rule. */
 export function Panel({ title, children, right, id, description }: { title: string; children: ReactNode; right?: ReactNode; id?: string; description?: ReactNode }) {
   return (
-    <section aria-labelledby={id} className="px-6 py-6 border-b border-[var(--cds-border-subtle-01)] last:border-0">
+    <section aria-labelledby={id} className="py-8 first:pt-0 border-b border-[var(--cds-border-subtle-00)] last:border-0 last:pb-0">
       <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
         <div>
           <h3 id={id} className="t-heading-03">{title}</h3>

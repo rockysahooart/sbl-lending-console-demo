@@ -94,9 +94,9 @@ export function Pipeline({ onOpen }: { onOpen: (r: Route) => void }) {
   return (
     <div className="px-4 sm:px-8 py-8">
       <PageHeader title="Pipeline" description="Requests in origination and pre-underwriting review. Estimated borrowing power is indicative and is not a credit decision." />
-      <dl className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-[var(--cds-border-subtle-01)] border border-[var(--cds-border-subtle-01)] mb-8">
+      <dl className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-10">
         {tiles.map(([l, v, d]) => (
-          <div key={l} className="bg-[var(--cds-layer-01)] px-5 py-4">
+          <div key={l} className="bg-[var(--cds-layer-01)] px-5 py-5">
             <dt className="t-label-01 text-[var(--cds-text-secondary)]">{l}</dt>
             <dd className="t-heading-05 tabular-nums mt-1">{v}</dd>
             <dd className="t-helper-01 text-[var(--cds-text-secondary)]">{d}</dd>

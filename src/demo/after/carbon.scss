@@ -108,6 +108,52 @@ $pnc-white: map.merge(
   .num, td.num, th.num { font-variant-numeric: tabular-nums; text-align: right; }
 }
 
+/*
+ * Surface and contrast hierarchy (White theme foundation).
+ *  - background (#fff): page and working surfaces; form fields (field-01, Gray 10) read clearly on it.
+ *  - layer-01 (Gray 10): used selectively for summaries and key metrics only.
+ *  - Tables: white rows, Gray 10 header with a strong rule, primary-contrast cell text.
+ *  - IBM Blue (interactive): primary actions, active navigation and selected rows.
+ */
+.sbl-after {
+  // Table containers sit directly on the page: no grey title band or toolbar slab.
+  .cds--data-table-container { background: transparent; padding-block-start: 0; }
+  .cds--data-table-header { background: transparent; padding-inline: 0; padding-block: 0 1rem; }
+  .cds--data-table-header__title { @include type.type-style('heading-03'); color: var(--cds-text-primary); }
+  .cds--data-table-header__description { color: var(--cds-text-secondary); }
+  .cds--table-toolbar { background: var(--cds-background); margin-block-end: 0.5rem; }
+
+  // Header: Gray 10 with a strong bottom rule; rows: white with subtle separators.
+  .cds--data-table thead th, .cds--data-table th {
+    background: var(--cds-layer-01);
+    color: var(--cds-text-primary);
+    border-block-end: 1px solid var(--cds-border-strong-01);
+  }
+  .cds--data-table tbody td, .cds--data-table tbody tr {
+    background: var(--cds-background);
+    color: var(--cds-text-primary);
+  }
+  .cds--data-table tbody td {
+    border-block-start: 0;
+    border-block-end: 1px solid var(--cds-border-subtle-00);
+  }
+  .cds--data-table tbody tr:hover, .cds--data-table tbody tr.cds--data-table--selected { background: var(--cds-background); }
+  .cds--data-table tbody tr:hover td { background: var(--cds-background-hover); border-block-end-color: var(--cds-border-subtle-00); }
+
+  // Numeric columns: right-aligned headers over right-aligned, tabular figures.
+  .cds--data-table th.num, .cds--data-table th.num .cds--table-header-label { text-align: end; }
+  .cds--data-table th.num .cds--table-header-label { inline-size: 100%; }
+
+  // Selected rows (Carbon isSelected, pledged collateral): IBM Blue indicator, no grey fill.
+  .cds--data-table tr.cds--data-table--selected td,
+  .cds--data-table tr.is-selected-row td { background: var(--cds-background); border-block-end-color: var(--cds-border-subtle-00); }
+  .cds--data-table tr.cds--data-table--selected td:first-child,
+  .cds--data-table tr.is-selected-row td:first-child { box-shadow: inset 3px 0 0 var(--cds-interactive); }
+  .cds--data-table tr.cds--data-table--selected:hover td,
+  .cds--data-table tr.is-selected-row:hover td { background: var(--cds-background-hover); }
+  .cds--data-table tr.cds--data-table--selected .cds--btn--ghost { color: var(--cds-link-primary); font-weight: 600; }
+}
+
 // Carbon modals render through a portal at <body>; apply the same theme there.
 .cds--modal.sbl-after-modal {
   @include theme.theme($pnc-white);
