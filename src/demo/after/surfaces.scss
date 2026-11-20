@@ -1,0 +1,32 @@
+// Surface and status refinement (loaded last). White is the canvas; neutrals only organise;
+// colour only carries meaning (status, selection, focus, action).
+@use '@carbon/react/scss/type';
+
+.sbl-after {
+  // Bands become white with hairline rules: no grey toolbar on grey header, no grey pagination band.
+  .queue-toolbar, .queue-footer, .eval-section__head, .band {
+    background: var(--cds-background);
+    --cds-field: var(--cds-field-01);
+    --cds-field-hover: var(--cds-field-hover-01);
+    --cds-layer: var(--cds-layer-01);
+  }
+  .queue-toolbar { border-block-end: 1px solid var(--cds-border-subtle-01); }
+  .queue-footer { border-block-start: 1px solid var(--cds-border-subtle-01); }
+  .queue-footer .cds--pagination { background: var(--cds-background); }
+  // Column headers: the one neutral band in a table (Gray 10), closed by a strong rule.
+  .cds--data-table thead th, .cds--data-table th { background: var(--cds-layer-01); border-block-end: 1px solid var(--cds-border-strong-01); }
+  // Evaluation sections: a heading with a rule, not a grey slab.
+  .eval-section__head { border-block-start: 0; border-block-end: 1px solid var(--cds-border-subtle-01); padding-inline: 0; }
+  .eval-section__body { padding-inline: 0; }
+  .eval-section { border-block-end: 0; }
+  // Supporting panels: white with one hairline, so they read as a column, not a grey card.
+  .status-panel { background: var(--cds-background); border: 1px solid var(--cds-border-subtle-01); }
+  .customer-card { background: var(--cds-background); border: 1px solid var(--cds-border-subtle-01); }
+  // Tab counts: the number of applications in each queue.
+  .tab-count { display: inline-block; min-inline-size: 1.5rem; margin-inline-start: 0.375rem; padding: 0 0.375rem; border-radius: 0.75rem; background: var(--cds-layer-accent-01); color: var(--cds-text-primary); @include type.type-style('label-01'); text-align: center; }
+  // The exact field a fix link points at: a 2 px ring in the item's meaning (correction = magenta, task = blue).
+  [data-fix] { outline: 2px solid var(--cds-interactive); outline-offset: 4px; }
+  [data-fix='correction'] { outline-color: #9f1853; } // Carbon magenta 70 (7.5:1 on white)
+  // Disabled primary actions keep Carbon's disabled tokens; the reason sits beside them (aria-describedby).
+  .step-footer .cds--btn:disabled { cursor: not-allowed; }
+}

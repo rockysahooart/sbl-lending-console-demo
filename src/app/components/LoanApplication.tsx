@@ -8,6 +8,7 @@ import { CoBorrower } from './CoBorrower';
 import { LoanInformation } from './LoanInformation';
 import { Collaterals } from './Collaterals';
 import { LoanSubmissionConfirmation } from './LoanSubmissionConfirmation';
+import { LegacySummary } from './ApplicationStepLayout';
 
 interface LoanApplicationProps {
   applicationId: string;
@@ -269,9 +270,11 @@ export function LoanApplication({
   };
 
   return (
-    <div className="h-screen bg-gray-100 overflow-hidden">
-      {renderStep()}
-    </div>
+    <LegacySummary.Provider value={{ applicationId, customerName, powerId: customerPowerId, opened: opportunityDate, purpose: loanPurpose, requested: formatAmount(applicationData.requestedAmount || requestedAmount), power: formatAmount(String(Math.round(totalBorrowingPower))), type: applicationData.applicationType }}>
+      <div className="h-screen bg-gray-100 overflow-hidden">
+        {renderStep()}
+      </div>
+    </LegacySummary.Provider>
   );
 }
 

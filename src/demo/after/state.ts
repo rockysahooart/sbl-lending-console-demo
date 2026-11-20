@@ -51,6 +51,12 @@ export interface Condition {
   status: 'open' | 'provided';
   at: string;
   providedAt?: string;
+  /** Finding type: a condition to satisfy, a question to answer, or a decision the banker must acknowledge. */
+  kind?: 'condition' | 'question' | 'decision';
+  /** The banker's written answer (question) or recorded borrower response (decision). */
+  response?: string;
+  /** Decision: the credit limit Credit Underwriting will approve (changed terms). */
+  terms?: number;
 }
 
 export interface AfterRequest {
@@ -74,6 +80,10 @@ export interface AfterRequest {
   coMarital: string;
   pledged: Record<string, boolean>;
   reviews: Record<string, ManualReview>;
+  /** Before's Manual Evaluation calculator: collateral values entered for assets held away, by row id. */
+  outside?: Record<string, number>;
+  /** Calculator rows the banker marks as a single-issuer position (bond and equity rows only). */
+  outsideIssuer?: Record<string, boolean>;
   reviewRequested: Record<string, string>;
   requested: number;
   purpose: string;
@@ -102,9 +112,40 @@ export interface AfterRequest {
   estimateLog: EstimateEvent[];
   /** Underwriting conditions returned to the banker after submission. */
   conditions?: Condition[];
-  status: 'draft' | 'submitted' | 'approved';
+  /**
+   * Lifecycle. draft → submitted (uwStage awaiting → review) → approved | declined,
+   * or → returned (back with the banker for named corrections) → submitted again.
+   */
+  status: 'draft' | 'submitted' | 'approved' | 'declined' | 'returned';
   submittedAt?: string;
   approvedAt?: string;
+  declinedAt?: string;
+  /** Underwriting stage while submitted: awaiting pickup, or under review. */
+  uwStage?: 'awaiting' | 'review';
+  /** The Evaluation screen has been opened (Evaluation In Progress). */
+  evalOpened?: boolean;
+  /** Submission history: every submit, return, condition and decision, oldest first. */
+  history?: HistoryEvent[];
+  /** What was submitted last time (shown as "Previously submitted" when returned). */
+  snapshot?: { at: string; requested: number; power: number; pledged: number; repay1: string; wealth1: string; costCenter: string };
+  /** Corrections underwriting asked for when it returned the request. */
+  corrections?: Correction[];
+  returnedAt?: string;
+}
+
+export interface HistoryEvent { at: string; event: string; detail: string; by: string }
+
+/** A correction is resolved when its field no longer holds the previously submitted value. */
+export interface Correction {
+  id: string;
+  /** Short readiness label, e.g. "Correct the primary source of repayment". */
+  short: string;
+  /** Underwriting's explanation. */
+  text: string;
+  field: 'repay1' | 'wealth1' | 'requested' | 'costCenter';
+  previous: string;
+  section: Section;
+  anchor: string;
 }
 
 /** The five acknowledgements from the original "Acknowledgment Required" dialog, same wording and order. */
@@ -167,6 +208,9 @@ export function initialRequest(id: ScenarioId): AfterRequest {
     estimateLog: [],
     conditions: [],
     status: 'draft',
+    // The complex request was already being evaluated in the original console ("Under Evaluation").
+    evalOpened: s.id === 'complex',
+    history: [],
   };
 }
 
@@ -178,6 +222,9 @@ export interface AfterGlobal {
   signedLines: string[];
   /** Active lines with a document reminder sent this session. */
   remindersSent?: string[];
+  /** Reference applications: items marked resolved ("refId:index") and applications started. */
+  resolvedRefItems?: string[];
+  startedRefs?: string[];
 }
 type GlobalValue = readonly [AfterGlobal, Dispatch<SetStateAction<AfterGlobal>>];
 const GlobalCtx = createContext<GlobalValue | null>(null);
@@ -216,7 +263,11 @@ export function useAfterRequest(id: ScenarioId) {
 
   const update = useCallback((patch: Partial<AfterRequest>) => setReq((prev) => ({ ...prev, ...patch })), [setReq]);
 
-  const ev = useMemo(() => evaluate(s.accounts, req.pledged, req.reviews), [s, req.pledged, req.reviews]);
+  const ev = useMemo(() => {
+    const base = evaluate(s.accounts, req.pledged, req.reviews);
+    const calc = calcOutside(req.outside ?? {}, base.pledgedValue, req.outsideIssuer ?? {});
+    return { ...base, outside: calc, total: base.total + calc.lendable };
+  }, [s, req.pledged, req.reviews, req.outside, req.outsideIssuer]);
 
   /** Changes that alter the estimate are recorded with before/after values. */
   const changeEstimate = useCallback(
@@ -262,6 +313,8 @@ export function useAfterRequest(id: ScenarioId) {
     if (req.ach) add('ach', 'Select the ACH debit account', !!req.achAccount, 'loan');
     add('consent', 'Record how the customer authorized this application', !!req.consentMethod, 'parties');
     add('attest', 'Complete the acknowledgment', ATTESTATIONS.every((a) => req.attest[a.key]) && req.disclosureViewed, 'acknowledgment');
+    // Returned for correction: each correction underwriting named blocks resubmission until changed.
+    if (req.status === 'returned') for (const c of req.corrections ?? []) add(`ret-${c.id}`, c.short, String(req[c.field]) !== c.previous, c.section);
     return items;
   }, [req, ev, co, coIdExpired, needsOwners, isEntity, owners.length]);
 
@@ -279,3 +332,42 @@ export function useAfterRequest(id: ScenarioId) {
 }
 
 export type RequestModel = ReturnType<typeof useAfterRequest>;
+
+/* ---------------- Borrowing-power calculator (Before: Manual Evaluation asset tabs) ---------------- */
+export type OutsideCat = 'highlyLiquid' | 'fixedIncome' | 'equities' | 'otherAssets';
+export const OUTSIDE_CATS: { key: OutsideCat; label: string }[] = [
+  { key: 'highlyLiquid', label: 'Highly Liquid' },
+  { key: 'fixedIncome', label: 'Fixed Income' },
+  { key: 'equities', label: 'Equities' },
+  { key: 'otherAssets', label: 'Other Assets' },
+];
+export const OUTSIDE_ROWS: { id: string; cat: OutsideCat; label: string; rate: number; issuer?: boolean }[] = [
+  { id: 'hl1', cat: 'highlyLiquid', label: 'Cash, Bank Certificates of Deposit at PNC', rate: 1 },
+  { id: 'hl2', cat: 'highlyLiquid', label: 'Money Market Funds and ETFs', rate: 0.8 },
+  { id: 'hl3', cat: 'highlyLiquid', label: 'U.S. Treasury Bills Maturing in Less than 7 years', rate: 0.8 },
+  { id: 'fi1', cat: 'fixedIncome', label: 'U.S. Treasury Notes and Bonds (7+ years)', rate: 0.8 },
+  { id: 'fi2', cat: 'fixedIncome', label: 'Corporate Bonds', rate: 0.8, issuer: true },
+  { id: 'eq1', cat: 'equities', label: 'U.S. Listed Equities', rate: 0.7, issuer: true },
+  { id: 'eq2', cat: 'equities', label: 'International Listed Equities', rate: 0.7, issuer: true },
+  { id: 'oa1', cat: 'otherAssets', label: 'Mutual Funds', rate: 0.6 },
+  { id: 'oa2', cat: 'otherAssets', label: 'Other Assets', rate: 0.6 },
+];
+export const CONCENTRATION_CAP = 0.4;
+export const PROVISIONAL_RATE = 0.35;
+export interface OutsideRowEval { id: string; cat: OutsideCat; label: string; value: number; baseRate: number; rate: number; lendable: number; concentrated: boolean }
+/**
+ * Each row: value × advance rate. The single-issuer limit applies only to bond and equity rows the banker
+ * marks as one issuer, measured — as in Manual Evaluation — against the selected market value
+ * (selected accounts plus the held-away collateral entered here). Over 40% → provisional 35%.
+ */
+export function calcOutside(values: Record<string, number>, pledgedValue: number, issuer: Record<string, boolean> = {}) {
+  const value = OUTSIDE_ROWS.reduce((t, r) => t + (values[r.id] || 0), 0);
+  const selected = value + pledgedValue;
+  const rows: OutsideRowEval[] = OUTSIDE_ROWS.map((r) => {
+    const v = values[r.id] || 0;
+    const concentrated = !!r.issuer && !!issuer[r.id] && selected > 0 && v / selected > CONCENTRATION_CAP;
+    const rate = concentrated ? PROVISIONAL_RATE : r.rate;
+    return { id: r.id, cat: r.cat, label: r.label, value: v, baseRate: r.rate, rate, lendable: v * rate, concentrated };
+  });
+  return { rows, value, lendable: rows.reduce((t, r) => t + r.lendable, 0), concentrated: rows.filter((r) => r.concentrated).length };
+}

@@ -11,6 +11,9 @@
 }
 
 .sbl-after {
+  // Round 2, WCAG 2.4.11: focus scrolled into view stops above the sticky step footer (height measured in AfterApp).
+  #after-main { scroll-padding-block-end: calc(var(--sbl-footer-h, 0px) + 0.5rem); scroll-padding-block-start: 0.5rem; }
+
   // FELIX-05 — Row expand chevrons (Console, Submitted, Collaterals) showed only that faint ring.
   // Carbon's 2px focus, drawn inside the cell so it is never clipped by the table.
   .cds--table-expand__button:focus-visible {

@@ -1,0 +1,88 @@
+// Before-reference features, modernised: ID-card profiles, borrowing-power calculator,
+// underwriting findings, column filters. Loaded after surfaces.scss.
+@use '@carbon/react/scss/type';
+
+.sbl-after {
+  // ---------- ID card (primary borrower / co-borrower) ----------
+  // Before: a 400×180 card with a blue identity block. After keeps the card-as-credential
+  // reading: a header band, a portrait block, the holder's identifiers, and an ID footer.
+  .id-card {
+    max-inline-size: 40rem;
+    border: 1px solid var(--cds-border-subtle-01);
+    border-radius: 8px; // Before-reference: the card reads as a credential (owner direction)
+    background: var(--cds-background);
+    overflow: hidden;
+  }
+  // Paul review: the band is a Gray 10 band with a Gray 30 edge (surface hierarchy), not Blue 10/80.
+  // Blue stays reserved for selection, focus and actions (same rule as Iris I8 on the avatar).
+  .id-card__band {
+    display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: var(--sbl-surface-band, #f4f4f4); // Gray 10
+    border-block-end: 1px solid #c6c6c6; // Gray 30
+    color: var(--cds-text-secondary); // Gray 70
+    @include type.type-style('label-01');
+    text-transform: uppercase; letter-spacing: 0.32px;
+  }
+  .id-card__body { display: flex; gap: 1.25rem; padding: 1rem; align-items: flex-start; }
+  .id-card__photo {
+    flex: none; inline-size: 4.5rem; block-size: 5.75rem;
+    display: flex; align-items: center; justify-content: center;
+    background: #f4f4f4; border: 1px solid var(--cds-border-subtle-01); border-radius: 4px;
+    color: var(--cds-text-primary);
+    @include type.type-style('heading-03');
+  }
+  .id-card__main { flex: 1; min-inline-size: 0; }
+  .id-card__ids { margin-block-start: 0.75rem; }
+  .id-card__ids dd.tabular-nums { white-space: nowrap; }
+  // The SSN "View" control wraps under the masked number in this narrow column: align it to the text edge.
+  .id-card__ids .cds--btn--ghost { padding-inline-start: 0; min-block-size: 0; }
+  .id-card__foot {
+    display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; align-items: center;
+    padding: 0.625rem 1rem; border-block-start: 1px solid var(--cds-border-subtle-01);
+    @include type.type-style('body-compact-01');
+  }
+  .id-card__foot .lbl { color: var(--cds-text-secondary); margin-inline-end: 0.375rem; }
+  .id-card.is-expired { border-color: #da1e28; }
+  @media (max-width: 671.98px) {
+    .id-card__body { flex-direction: column; }
+    .id-card__photo { inline-size: 3.5rem; block-size: 4.5rem; }
+  }
+
+  // ---------- Borrowing-power calculator ----------
+  .calc { border: 1px solid var(--cds-border-subtle-01); background: var(--cds-background); }
+  .calc__head { padding: 1rem; border-block-end: 1px solid var(--cds-border-subtle-01); }
+  .calc table { inline-size: 100%; border-collapse: collapse; }
+  .calc th, .calc td { padding: 0.5rem 1rem; text-align: start; border-block-end: 1px solid var(--cds-border-subtle-00, #e0e0e0); }
+  .calc th { @include type.type-style('label-01'); color: var(--cds-text-secondary); font-weight: 600; }
+  .calc td.num, .calc th.num { text-align: end; font-variant-numeric: tabular-nums; }
+  .calc input.calc__in {
+    inline-size: 9rem; text-align: end; font-variant-numeric: tabular-nums;
+    padding: 0.375rem 0.5rem; border: 0; border-block-end: 1px solid #8d8d8d; background: #f4f4f4;
+  }
+  .calc input.calc__in:focus { outline: 2px solid var(--cds-focus); outline-offset: -2px; }
+  .calc__flash { animation: calc-flash 0.9s ease-out; }
+  @keyframes calc-flash { from { background: #defbe6; } to { background: transparent; } }
+  @media (prefers-reduced-motion: reduce) { .calc__flash { animation: none; } }
+  .calc__totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 1rem; padding: 1rem; border-block-start: 1px solid var(--cds-border-subtle-01); }
+
+  // ---------- Underwriting findings ----------
+  .finding { border: 1px solid var(--cds-border-subtle-01); border-inline-start: 3px solid #8d8d8d; padding: 1rem; background: var(--cds-background); }
+  // Paul review: question was IBM Blue (reserved for actions) and decision was green (reads as
+// "approved" while it still needs the borrower's response). Kind stripes now carry no status meaning.
+  .finding.t-question { border-inline-start-color: #007d79; } // Teal 60
+  .finding.t-correction { border-inline-start-color: #9f1853; }
+  .finding.t-condition { border-inline-start-color: #8a3ffc; }
+  .finding.t-decision { border-inline-start-color: #8e6a00; } // Yellow 60: needs acknowledgment
+  .finding.is-done { border-inline-start-color: #8d8d8d; }
+
+  // ---------- Column filters ----------
+  .col-filter-btn { display: inline-flex; align-items: center; justify-content: center; inline-size: 1.5rem; block-size: 1.5rem; margin-inline-start: 0.25rem; border-radius: 2px; color: var(--cds-icon-secondary); }
+  .col-filter-btn:hover { background: var(--cds-layer-hover-01); }
+  .col-filter-btn.is-on { color: var(--cds-interactive); background: #edf5ff; }
+  .col-filter-btn:focus-visible { outline: 2px solid var(--cds-focus); outline-offset: -2px; }
+  .col-filter-pop { position: absolute; z-index: 20; inset-block-start: 100%; inset-inline-start: 0; min-inline-size: 15rem; padding: 1rem; background: var(--cds-background); border: 1px solid var(--cds-border-subtle-01); box-shadow: 0 2px 6px rgba(0,0,0,0.2); text-align: start; font-weight: 400; }
+  .col-filter-pop .row { display: flex; gap: 0.5rem; }
+  .col-filter-pop input[type=text], .col-filter-pop input[type=number], .col-filter-pop input[type=date] { inline-size: 100%; padding: 0.375rem 0.5rem; border: 0; border-block-end: 1px solid #8d8d8d; background: #f4f4f4; }
+  .active-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.5rem 1rem; border-block-end: 1px solid var(--cds-border-subtle-01); background: var(--cds-background); }
+}

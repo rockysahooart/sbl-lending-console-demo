@@ -22,9 +22,10 @@ import { ChevronDown, DocumentPdf } from '@carbon/icons-react';
 import { useDemo } from '../DemoContext';
 import { ASSET_CLASS_LABEL, fmtMoney, fmtPct, type ScenarioId } from '../data';
 import { reviewBounds } from '../engine';
-import { ATTESTATIONS, ROLE_LABEL, USERS, nowStamp, useAfterRequest, useAudit, type RequestModel } from './state';
+import { OUTSIDE_CATS, OUTSIDE_ROWS, CONCENTRATION_CAP, PROVISIONAL_RATE, ATTESTATIONS, ROLE_LABEL, USERS, nowStamp, useAfterRequest, useAudit, type RequestModel } from './state';
 import { reviewUpside } from './guidance';
-import { KV, Money, Tag, TextField, cx, type Tone } from './ui';
+import { appState } from './lifecycle';
+import { KV, Money, StatusTag, Tag, TextField, cx, type Tone } from './ui';
 import type { Route } from './AfterApp';
 
 /*
@@ -56,10 +57,12 @@ export function landOn(el: HTMLElement | null, mode: 'start' | 'nearest' = 'star
     const m = main.getBoundingClientRect();
     const r = el.getBoundingClientRect();
     const gap = 16;
+    // Keep the landing clear of the sticky step footer too (WCAG 2.4.11; its height is main's scroll padding).
+    const end = Math.max(gap, parseFloat(getComputedStyle(main).scrollPaddingBottom) || 0);
     let delta = r.top - m.top - gap;
     if (mode === 'nearest') {
-      if (r.top >= m.top + gap && r.bottom <= m.bottom - gap) delta = 0;
-      else if (r.top > m.top && r.height <= m.height - 2 * gap) delta = r.bottom - m.bottom + gap;
+      if (r.top >= m.top + gap && r.bottom <= m.bottom - end) delta = 0;
+      else if (r.top > m.top && r.height <= m.height - gap - end) delta = r.bottom - m.bottom + end;
     }
     if (delta) main.scrollTo({ top: main.scrollTop + delta });
   }
@@ -108,7 +111,7 @@ export function EvalSection({ id, title, metric, note, children, defaultOpen = t
   );
 }
 
-export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck }: { id: ScenarioId; onRoute: (r: Route) => void; ack?: boolean; onAck?: (open: boolean) => void }) {
+export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck, fix }: { id: ScenarioId; onRoute: (r: Route) => void; ack?: boolean; onAck?: (open: boolean) => void; fix?: string }) {
   const m = useAfterRequest(id);
   const { s, req, ev, changeEstimate, acknowledged, update } = m;
   const { scenario, adoptScenario } = useDemo();
@@ -116,13 +119,24 @@ export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck }: { id: S
   const setAck = (open: boolean) => { setAckState(open); onAck?.(open); };
   const [pdf, setPdf] = useState(false);
   useEffect(() => { if (scenario !== id) adoptScenario(id); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Opening the Evaluation is the first step of the application: Not Started → In Progress.
+  useEffect(() => { if (!req.evalOpened && req.status === 'draft') update({ evalOpened: true }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const started = acknowledged || req.visited.length > 0;
-  const locked = req.status !== 'draft';
+  const locked = ['submitted', 'approved', 'declined'].includes(req.status);
+  const st = appState(m);
+  const fixItem = fix ? st.items.find((i) => i.id === fix) : undefined;
+  const noCollateral = st.items.some((i) => i.id === 'pledge');
+  // A fix link lands on the exact section and marks it.
+  useEffect(() => {
+    if (!fixItem?.anchor) return;
+    const t = window.setTimeout(() => { const el = document.getElementById(fixItem.anchor!); if (el) { el.setAttribute('data-fix', fixItem.kind === 'correction' ? 'correction' : 'task'); landOn(el); } }, 120);
+    return () => { window.clearTimeout(t); document.querySelectorAll('[data-fix]').forEach((n) => n.removeAttribute('data-fix')); };
+  }, [fix]); // eslint-disable-line react-hooks/exhaustive-deps
   const autoRows = ev.rows;
   const manualRows = ev.rows.filter((r) => r.status === 'review' || r.status === 'reviewed');
   const autoTotal = ev.rows.filter((r) => r.status === 'auto').reduce((t, r) => t + r.lendable, 0);
-  const manualTotal = manualRows.reduce((t, r) => t + r.lendable, 0);
+  const manualTotal = manualRows.reduce((t, r) => t + r.lendable, 0) + ev.outside.lendable;
   const selectable = ev.rows.filter((r) => r.status !== 'ineligible');
   const selected = ev.rows.filter((r) => r.pledged).length;
   const allSelected = selectable.every((r) => r.pledged);
@@ -134,6 +148,7 @@ export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck }: { id: S
   const generatePdf = () => { setPdf(true); m.log('Evaluation PDF generated (simulated)', `Total Maximum Borrowing Power ${fmtMoney(ev.total)}`, s.requestId); };
   const start = () => {
     if (locked) { onRoute({ page: 'review', id: s.requestId }); return; }
+    if (noCollateral) return;
     if (acknowledged) onRoute({ page: 'request', id, section: req.section });
     else setAck(true);
   };
@@ -143,6 +158,15 @@ export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck }: { id: S
       <fieldset disabled={locked} className="min-w-0">
         <legend className="sr-only">Evaluation for {s.requestId}</legend>
         {locked && <InlineNotification kind="info" lowContrast hideCloseButton className="!max-w-none mb-4" title="Submitted to underwriting" subtitle={`Submitted ${req.submittedAt}. This evaluation is read-only.`} />}
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <StatusTag status={st.status} />
+          <p className="t-body-01 text-[var(--cds-text-secondary)]">{st.detail !== st.status ? `${st.detail}. ` : ''}{st.why}</p>
+        </div>
+        {fixItem && (
+          <div className="mb-4" role="status">
+            <InlineNotification kind={fixItem.kind === 'correction' ? 'warning' : 'info'} lowContrast hideCloseButton className="!max-w-none" title={fixItem.kind === 'correction' ? `Action required: ${fixItem.problem ?? fixItem.label}` : fixItem.label} subtitle={fixItem.explain} />
+          </div>
+        )}
 
         <EvalSection id="customer-details" title="Customer Details">
           <dl className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-x-8 gap-y-4">
@@ -238,13 +262,14 @@ export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck }: { id: S
       </fieldset>
 
       <footer className="step-footer">
-        <Button kind="ghost" size="md" onClick={() => onRoute({ page: 'console', tab: 'pending', expanded: s.requestId })}>Back</Button>
+        <Button kind="ghost" size="md" onClick={() => onRoute({ page: 'console', tab: st.queue, expanded: s.requestId })}>Back</Button>
         {/* KENJI-08 (done by Ada): below sm, Generate PDF is icon-only and the row does not wrap, so the sticky footer stays one row. */}
         <div className="flex flex-nowrap sm:flex-wrap items-center justify-end gap-2 sm:gap-4">
           {pdf && <p className="t-helper-01 text-[var(--cds-text-secondary)] sr-only sm:not-sr-only" role="status">Evaluation PDF prepared (simulated)</p>}
           <Button kind="tertiary" size="md" hasIconOnly renderIcon={DocumentPdf} iconDescription="Generate PDF" tooltipPosition="top" className="sm:!hidden" onClick={generatePdf} />
           <Button kind="tertiary" size="md" renderIcon={DocumentPdf} className="max-sm:!hidden" onClick={generatePdf}>Generate PDF</Button>
-          <Button id="evaluation-primary" size="md" onClick={start}>{locked ? 'View in Pending Review' : started ? 'Continue Request' : 'Start Request'}</Button>
+          {noCollateral && !locked && <p id="start-help" className="t-helper-01 text-[var(--cds-text-secondary)] max-w-xs text-right" aria-live="polite">Select at least one eligible account in Auto Evaluation to start the request.</p>}
+          <Button id="evaluation-primary" size="md" onClick={start} disabled={noCollateral && !locked} aria-describedby={noCollateral && !locked ? 'start-help' : undefined}>{locked ? 'View in Pending Review' : started ? 'Continue Request' : 'Start Request'}</Button>
         </div>
       </footer>
       <AcknowledgmentModal
@@ -328,6 +353,7 @@ function ManualEvaluation({ m, rows, total }: { m: RequestModel; rows: RequestMo
           })}
         </>
       )}
+      <OutsideCalculator m={m} />
       {reviewing && <ReviewModal m={m} accountId={reviewing} onClose={() => setReviewing(null)} />}
     </EvalSection>
   );
@@ -440,5 +466,84 @@ export function AcknowledgmentModal({ m, open, onClose, onStart, startLabel = 'S
         {!all ? `Step 1: Select all five acknowledgements to unlock the full acknowledgement. (${count} of 5 selected)` : !req.disclosureViewed ? 'Step 2: Open the full acknowledgement to read it.' : 'Both acknowledgement steps are complete.'}
       </p>
     </Modal>
+  );
+}
+
+/** Before's Manual Evaluation calculator, kept: enter collateral held away by asset class; lendable value,
+ *  concentration and total borrowing power update as you type, with the rule shown beside each figure. */
+function OutsideCalculator({ m }: { m: RequestModel }) {
+  const { req, update, ev, s, log } = m;
+  const locked = req.status !== 'draft' && req.status !== 'returned';
+  const [tab, setTab] = useState<(typeof OUTSIDE_CATS)[number]['key']>('highlyLiquid');
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [flash, setFlash] = useState('');
+  const vals = req.outside ?? {};
+  const set = (id: string, raw: string) => {
+    setDraft((d) => ({ ...d, [id]: raw }));
+    const n = Number(raw.replace(/[^0-9.]/g, '')) || 0;
+    update({ outside: { ...vals, [id]: n } });
+    setFlash(id);
+  };
+  const rows = ev.outside.rows.filter((r) => r.cat === tab);
+  const capacity = ev.total - req.requested;
+  return (
+    <div className="calc mt-6" id="borrowing-calculator">
+      <div className="calc__head">
+        <h3 className="t-heading-02">Borrowing Power Calculator</h3>
+        <p className="t-body-01 text-[var(--cds-text-secondary)] mt-1">Add collateral held away from the selected accounts. Lendable value = collateral value × advance rate. Mark a bond or equity row as a single issuer; if it is over {Math.round(CONCENTRATION_CAP * 100)}% of the selected market value, it is valued at {Math.round(PROVISIONAL_RATE * 100)}% until a credit officer reviews it.</p>
+      </div>
+      <div role="tablist" aria-label="Asset class" className="flex flex-wrap border-b border-[var(--cds-border-subtle-01)]">
+        {OUTSIDE_CATS.map((c) => {
+          const sum = ev.outside.rows.filter((r) => r.cat === c.key).reduce((t, r) => t + r.lendable, 0);
+          const on = tab === c.key;
+          return (
+            <button key={c.key} type="button" role="tab" id={`calc-tab-${c.key}`} aria-selected={on} aria-controls="calc-panel" tabIndex={on ? 0 : -1}
+              onClick={() => setTab(c.key)}
+              onKeyDown={(e) => { const i = OUTSIDE_CATS.findIndex((x) => x.key === c.key); const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0; if (d) { const n = OUTSIDE_CATS[(i + d + 4) % 4].key; setTab(n); setTimeout(() => document.getElementById(`calc-tab-${n}`)?.focus(), 0); } }}
+              className={cx('px-4 py-3 t-body-compact-01 text-left border-b-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--cds-focus)] focus-visible:-outline-offset-2', on ? 'border-[var(--cds-interactive)] font-semibold' : 'border-transparent text-[var(--cds-text-secondary)]')}>
+              {c.label}<span className="block t-helper-01 tabular-nums">{fmtMoney(sum)}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div role="tabpanel" id="calc-panel" aria-labelledby={`calc-tab-${tab}`} className="overflow-x-auto">
+        <table>
+          <thead><tr><th scope="col">Asset</th><th scope="col" className="num">Collateral Value (USD)</th><th scope="col" className="num">Advance rate</th><th scope="col" className="num">Lendable Value</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td>{r.label}
+                  {OUTSIDE_ROWS.find((x) => x.id === r.id)?.issuer && (
+                    <label className="flex items-center gap-2 mt-1 t-helper-01">
+                      <input type="checkbox" className="w-4 h-4" disabled={locked} checked={!!req.outsideIssuer?.[r.id]} onChange={(e) => update({ outsideIssuer: { ...(req.outsideIssuer ?? {}), [r.id]: e.target.checked } })} />
+                      Single issuer
+                    </label>
+                  )}
+                  {r.concentrated && <span className="block t-helper-01 text-[var(--cds-text-error)]">Over {Math.round(CONCENTRATION_CAP * 100)}% of selected market value · provisional {Math.round(PROVISIONAL_RATE * 100)}%</span>}</td>
+                <td className="num">
+                  <label className="sr-only" htmlFor={`calc-${r.id}`}>{r.label}: Collateral Value (USD)</label>
+                  <input id={`calc-${r.id}`} className="calc__in" inputMode="decimal" disabled={locked} value={draft[r.id] ?? (vals[r.id] ? vals[r.id].toLocaleString('en-US') : '')} placeholder="0"
+                    onChange={(e) => set(r.id, e.target.value)}
+                    onBlur={() => { setDraft((d) => { const n = { ...d }; delete n[r.id]; return n; }); if (vals[r.id]) log('Calculator value entered', `${r.label}: ${fmtMoney(vals[r.id])}`, s.requestId); }} />
+                </td>
+                <td className="num">{fmtPct(r.rate)}{r.concentrated && <span className="block t-helper-01 text-[var(--cds-text-secondary)]">standard {fmtPct(r.baseRate)}</span>}</td>
+                <td key={flash === r.id ? `${r.id}-${r.value}` : r.id} className={cx('num font-semibold', flash === r.id && 'calc__flash')}><Money value={r.lendable} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* One polite announcement of the outcome, not of the whole block (which also holds an input). */}
+      <p className="sr-only" aria-live="polite">Total Maximum Borrowing Power {fmtMoney(ev.total)}. {capacity >= 0 ? `Remaining capacity ${fmtMoney(capacity)}` : `${fmtMoney(-capacity)} short of the Requested Loan Amount`}.</p>
+      <div className="calc__totals">
+        <dl><KV label="Held-away lendable value" value={<span className="t-heading-03 tabular-nums">{fmtMoney(ev.outside.lendable)}</span>} /></dl>
+        <dl><KV label="Total Maximum Borrowing Power" value={<span className="t-heading-03 tabular-nums">{fmtMoney(ev.total)}</span>} /></dl>
+        <div>
+          <label htmlFor="calc-requested" className="t-label-01 text-[var(--cds-text-secondary)] block">Requested Loan Amount (USD)</label>
+          <input id="calc-requested" className="calc__in mt-1 !w-full" inputMode="numeric" disabled={locked} value={req.requested ? req.requested.toLocaleString('en-US') : ''} onChange={(e) => update({ requested: Number(e.target.value.replace(/[^0-9]/g, '')) || 0 })} aria-describedby="calc-capacity" />
+        </div>
+        <dl><KV label={capacity >= 0 ? 'Remaining capacity' : 'Shortfall'} value={<span id="calc-capacity" className={cx('t-heading-03 tabular-nums', capacity < 0 && 'text-[var(--cds-text-error)]')}>{fmtMoney(Math.abs(capacity))}{capacity < 0 ? ' short' : ''}</span>} /></dl>
+      </div>
+    </div>
   );
 }

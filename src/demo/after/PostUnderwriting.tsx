@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActionableNotification, Button, Checkbox, InlineNotification, Modal, Pagination, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow } from '@carbon/react';
+import { ActionableNotification, Button, Checkbox, InlineNotification, Modal, Select, SelectItem, TextArea, TextInput, RadioButton, RadioButtonGroup, Pagination, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow } from '@carbon/react';
 import { CheckmarkFilled, Time } from '@carbon/icons-react';
 import { ACTIVE_LINES, PIPELINE, fmtMoney, fmtPct, type ActiveLine, type ScenarioId } from '../data';
-import { nowStamp, useAfterRequest, useAudit } from './state';
-import { KV, Money, PageHeader, Tag, cx } from './ui';
+import { nowStamp, useAfterRequest, useAudit, type Condition, type RequestModel } from './state';
+import { KV, Money, PageHeader, StatusTag, Tag, cx } from './ui';
 import { landOn } from './Evaluation';
-import { QueueToolbar, STATUS_TONE, type SearchBy } from './Console';
+import { ActionCell, ActiveFilters, ColHeader, useColumns, type Col } from './columns';
+import { QueueToolbar, type SearchBy } from './Console';
+import { appState, submittedRefState, STATUS_ORDER, type AppState } from './lifecycle';
 import { LINE_REFS, SUBMITTED_REFS, type SubmittedRef } from './records';
 import type { Route } from './AfterApp';
 
@@ -23,14 +25,14 @@ const borrowerName = (business: string) => business.replace(/ \((Individual|Join
 const UNDERWRITING_ACTOR = { user: 'Credit Underwriting (simulated)', role: 'Credit Underwriting' };
 const approvedLimit = (requested: number, power: number) => Math.floor(Math.min(requested, power) / 10000) * 10000;
 
-export function Underwriting({ focusId, onRoute, onSelect }: { focusId?: string; onRoute: (r: Route) => void; onSelect?: (id?: string) => void }) {
+export function Underwriting({ focusId, fix, onRoute, onSelect }: { focusId?: string; fix?: string; onRoute: (r: Route) => void; onSelect?: (id?: string) => void }) {
   const lines = useScenarioLines();
-  const { log, setGlobal } = useAudit();
+  const { log, setGlobal, global } = useAudit();
   const logUnderwriting = (event: string, detail: string, requestId: string) =>
     setGlobal((g) => ({ ...g, audit: [{ at: nowStamp(), ...UNDERWRITING_ACTOR, event, detail, requestId }, ...g.audit] }));
   const [confirmFor, setConfirmFor] = useState<string | null>(null);
   const rows = [
-    ...lines.filter((l) => l.m.req.status !== 'draft').map((l) => ({ key: l.m.s.requestId, client: l.m.s.entityName ?? l.m.s.primary.name, applicant: l.m.s.primary.name, requested: l.m.req.requested, power: l.m.ev.total, submitted: l.m.req.submittedAt ?? '', status: l.m.req.status, scenario: l, line: false, ref: undefined as SubmittedRef | undefined })),
+    ...lines.filter((l) => ['submitted', 'approved', 'declined'].includes(l.m.req.status)).map((l) => ({ key: l.m.s.requestId, client: l.m.s.entityName ?? l.m.s.primary.name, applicant: l.m.s.primary.name, requested: l.m.req.requested, power: l.m.ev.total, submitted: l.m.req.submittedAt ?? '', status: l.m.req.status, scenario: l, line: false, ref: undefined as SubmittedRef | undefined })),
     ...PIPELINE.filter((p) => p.status === 'In Underwriting').map((p) => ({ key: p.requestId, client: p.client, applicant: p.client, requested: p.requestedAmount, power: p.borrowingPower, submitted: '11/12/2025', status: 'submitted' as 'submitted' | 'approved', scenario: undefined, line: false, ref: undefined as SubmittedRef | undefined })),
     ...SUBMITTED_REFS.map((r) => ({ key: r.id, client: borrowerName(r.business), applicant: r.applicant, requested: r.requested, power: r.power, submitted: r.submitted, status: (r.decision === 'Approved' ? 'approved' : 'submitted') as 'submitted' | 'approved', scenario: undefined, line: false, ref: r as SubmittedRef | undefined })),
     ...ACTIVE_LINES.map((l) => ({ key: l.id, client: l.client, applicant: l.client, requested: l.limit, power: l.collateralValue, submitted: l.approvedOn, status: 'approved' as 'submitted' | 'approved', scenario: undefined, line: true, ref: undefined as SubmittedRef | undefined })),
@@ -39,7 +41,13 @@ export function Underwriting({ focusId, onRoute, onSelect }: { focusId?: string;
   const [q, setQ] = useState('');
   const [newest, setNewest] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
-  const underwriterStatus = (r: (typeof rows)[number]): string => (r.ref ? r.ref.status : r.status === 'approved' ? 'Approved' : (r.scenario?.m.req.conditions ?? []).some((c) => c.status === 'open') ? 'Condition Requested' : 'Underwriting In Progress');
+  // Status, detail and next action come from lifecycle.ts, so this queue agrees with the Console.
+  const life = (r: (typeof rows)[number]): AppState =>
+    r.scenario ? appState(r.scenario.m, global.signedLines.includes(r.key))
+      : r.ref ? submittedRefState(r.ref)
+        : r.line ? { status: 'Completed', detail: 'Line active', queue: 'submitted', inUnderwriting: false, items: [], why: 'Approved, documents signed, and the line is active.' }
+          : { status: 'Under Review', detail: 'In credit underwriting', queue: 'submitted', inUnderwriting: true, items: [], why: 'Credit Underwriting is reviewing the request. Nothing is needed from you.' };
+  const underwriterStatus = (r: (typeof rows)[number]): string => life(r).status;
   const [statuses, setStatuses] = useState<string[]>([]);
   const shown = useMemo(() => {
     const n = q.trim().toLowerCase();
@@ -63,16 +71,58 @@ export function Underwriting({ focusId, onRoute, onSelect }: { focusId?: string;
   };
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const pages = Math.max(1, Math.ceil(shown.length / pageSize));
+  type UR = (typeof rows)[number];
+  const finalOf = (r: UR) => { const st = life(r).status; return st === 'Completed' ? 'Booked' : st === 'Approved' || st === 'Declined' ? st : 'Pending'; };
+  const colsDef: Col<UR>[] = [
+    { key: 'id', label: 'Application ID', type: 'text', get: (r) => r.key },
+    { key: 'borrower', label: 'Borrower Name', type: 'text', get: (r) => r.client },
+    { key: 'loan', label: 'Loan Type', type: 'enum', get: () => 'Securities-Based Line of Credit' },
+    { key: 'requested', label: 'Requested Amount', type: 'number', num: true, money: true, get: (r) => r.requested },
+    { key: 'status', label: 'Underwriter Status', type: 'enum', get: (r) => life(r).status },
+    { key: 'final', label: 'Final Decision', type: 'enum', get: finalOf },
+    { key: 'updated', label: 'Last Updated', type: 'date', get: (r) => r.submitted },
+    { key: 'action', label: 'Actions', type: 'enum', get: (r) => (life(r).status === 'Action Required' ? 'Respond' : 'View') },
+  ];
+  const cols = useColumns(shown, colsDef, () => setPage(1));
+  const pages = Math.max(1, Math.ceil(cols.rows.length / pageSize));
   const curPage = Math.min(page, pages);
-  const visible = shown.slice((curPage - 1) * pageSize, curPage * pageSize);
+  const visible = cols.rows.slice((curPage - 1) * pageSize, curPage * pageSize);
   const target = rows.find((r) => r.key === confirmFor);
   const [conditionFor, setConditionFor] = useState<string | null>(null);
   const openOf = (r?: (typeof rows)[number]) => (r?.scenario?.m.req.conditions ?? []).filter((c) => c.status === 'open');
   const condTarget = rows.find((r) => r.key === conditionFor);
-  const provide = (r: (typeof rows)[number], id: string) => {
-    r.scenario!.m.setReq((p) => ({ ...p, conditions: (p.conditions ?? []).map((c) => (c.id === id ? { ...c, status: 'provided', providedAt: nowStamp() } : c)) }));
-    log('Condition provided', 'Response sent to Credit Underwriting', r.key);
+  const [returnFor, setReturnFor] = useState<string | null>(null);
+  const returnTarget = rows.find((r) => r.key === returnFor);
+  /** A simulated underwriting event: changes the request and is recorded in its submission history. */
+  const uwEvent = (r: (typeof rows)[number], event: string, detail: string, patch: (p: RequestModel['req']) => Partial<RequestModel['req']>) => {
+    const at = nowStamp();
+    r.scenario!.m.setReq((p) => ({ ...p, ...patch(p), history: [...(p.history ?? []), { at, event, detail, by: 'Credit Underwriting (simulated)' }] }));
+    logUnderwriting(event, detail, r.key);
+  };
+  const issue = (r: (typeof rows)[number], kind: 'question' | 'decision', text: string, terms?: number) =>
+    uwEvent(r, kind === 'question' ? 'Question from underwriting (simulated)' : 'Decision issued: approval on changed terms (simulated)', text, (p) => ({ uwStage: 'review', conditions: [...(p.conditions ?? []), { id: `c${(p.conditions ?? []).length + 1}`, kind, text, terms, status: 'open', at: nowStamp() }] }));
+  // Arriving to respond to a condition: land on the conditions and mark them.
+  useEffect(() => { if (fix === 'conditions') setTimeout(() => { const el = document.getElementById('conditions'); if (el) { el.setAttribute('data-fix', 'correction'); landOn(el); } }, 140); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  /** The banker's answer to a finding. Every response is kept in the submission history. */
+  const respond = (r: (typeof rows)[number], c: Condition, resp: Resp) => {
+    const at = nowStamp();
+    const by = 'S. Mitchell · Loan Officer';
+    r.scenario!.m.setReq((p) => {
+      const conditions = (p.conditions ?? []).map((x) => (x.id === c.id ? { ...x, status: 'provided' as const, providedAt: at, response: resp.text } : x));
+      const hist = [...(p.history ?? [])];
+      if (c.kind === 'decision') {
+        hist.push({ at, event: `Borrower response recorded: ${resp.decision}`, detail: `${resp.method}, communicated ${resp.date}. ${resp.text}`.trim(), by });
+        if (resp.decision === 'Accept') {
+          hist.push({ at, event: 'Approved on revised terms', detail: `Requested amount ${fmtMoney(p.requested)} → ${fmtMoney(c.terms ?? p.requested)}`, by: 'Credit Underwriting (simulated)' });
+          return { ...p, conditions, history: hist, requested: c.terms ?? p.requested, status: 'approved', approvedAt: at };
+        }
+        if (resp.decision === 'Deny') return { ...p, conditions, history: hist, status: 'declined', declinedAt: at };
+        return { ...p, conditions, history: hist, uwStage: 'review' };
+      }
+      hist.push({ at, event: c.kind === 'question' ? 'Question answered' : 'Condition provided', detail: resp.text ? `${c.text} — ${resp.text}` : c.text, by });
+      return { ...p, conditions, history: hist, uwStage: 'review' };
+    });
+    log(c.kind === 'decision' ? 'Borrower response recorded' : c.kind === 'question' ? 'Question answered' : 'Condition provided', 'Response sent to Credit Underwriting', r.key);
   };
 
   return (
@@ -85,7 +135,7 @@ export function Underwriting({ focusId, onRoute, onSelect }: { focusId?: string;
               <div className="queue-filters">
                 <fieldset>
                   <legend className="t-label-01 text-[var(--cds-text-secondary)] mb-2">Underwriter Status</legend>
-                  {[...new Set(rows.map(underwriterStatus))].map((st) => (
+                  {STATUS_ORDER.filter((x) => rows.some((r) => underwriterStatus(r) === x)).map((st) => (
                     <Checkbox key={st} id={`uw-${st}`} labelText={st} checked={statuses.includes(st)} onChange={(_: unknown, { checked }: { checked: boolean }) => { setStatuses(checked ? [...statuses, st] : statuses.filter((x) => x !== st)); setPage(1); }} />
                   ))}
                 </fieldset>
@@ -93,37 +143,32 @@ export function Underwriting({ focusId, onRoute, onSelect }: { focusId?: string;
               </div>
             )}
           </QueueToolbar>
+          <ActiveFilters st={cols} count={cols.rows.length} total={shown.length} noun="applications" />
           <div className="overflow-x-auto">
             <Table aria-label="Post-underwriting review queue" size="lg" className="queue-table min-w-[1120px]">
               <TableHead>
                 <TableRow>
-                  <TableHeader>Application ID</TableHeader>
-                  <TableHeader>Borrower Name</TableHeader>
-                  <TableHeader>Loan Type</TableHeader>
-                  <TableHeader className="num">Requested Amount</TableHeader>
-                  <TableHeader>Underwriter Status</TableHeader>
-                  <TableHeader>Final Decision</TableHeader>
-                  <TableHeader>Last Updated</TableHeader>
-                  <TableHeader>Actions</TableHeader>
+                  {colsDef.map((c) => <ColHeader key={c.key} st={cols} k={c.key} className={c.num ? 'num' : undefined} />)}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {visible.length === 0 && (
-                  <TableRow className="empty-row"><TableCell colSpan={8}><div className="py-8 text-center"><p className="t-heading-02">{rows.length ? 'No applications match' : 'No applications are in underwriting.'}</p>{rows.length > 0 && <><p className="t-body-01 text-[var(--cds-text-secondary)] mt-1">Check the spelling or clear the search and filters.</p><Button kind="tertiary" size="sm" className="mt-4" onClick={() => { setQ(''); setStatuses([]); setPage(1); }}>Clear search and filters</Button></>}</div></TableCell></TableRow>
+                  <TableRow className="empty-row"><TableCell colSpan={8}><div className="py-8 text-center"><p className="t-heading-02">{rows.length ? 'No applications match' : 'No applications are in underwriting.'}</p>{rows.length > 0 && <><p className="t-body-01 text-[var(--cds-text-secondary)] mt-1">Check the spelling or clear the search and filters.</p><Button kind="tertiary" size="sm" className="mt-4" onClick={() => { setQ(''); setStatuses([]); cols.clearAll(); setPage(1); }}>Clear search and filters</Button></>}</div></TableCell></TableRow>
                 )}
                 {visible.map((r) => {
-                  const st = underwriterStatus(r);
+                  const lf = life(r);
+                  const st = lf.status;
                   return (
                     <TableRow key={r.key} isSelected={sel === r.key}>
                       <TableCell className="font-semibold tabular-nums whitespace-nowrap">{r.key}</TableCell>
                       <TableCell>{r.client}</TableCell>
                       <TableCell className="cell-secondary whitespace-nowrap">Securities-Based Line of Credit</TableCell>
                       <TableCell className="num"><Money value={r.requested} /></TableCell>
-                      <TableCell><Tag tone={STATUS_TONE[st] ?? 'info'}>{st}</Tag></TableCell>
-                      <TableCell>{r.line ? 'Booked' : r.ref ? (r.ref.decision === 'Pending' ? <span className="cell-secondary">Pending</span> : r.ref.decision) : r.status === 'approved' ? 'Approved' : <span className="cell-secondary">Pending</span>}</TableCell>
+                      <TableCell><StatusTag status={lf.status} detail={lf.detail} /></TableCell>
+                      <TableCell>{st === 'Completed' ? 'Booked' : st === 'Approved' || st === 'Declined' ? st : <span className="cell-secondary">Pending</span>}</TableCell>
                       <TableCell className="cell-secondary tabular-nums whitespace-nowrap">{r.submitted.split(',')[0]}</TableCell>
                       <TableCell>
-                        <Button kind={st === 'Condition Requested' ? 'tertiary' : 'ghost'} size="sm" onClick={() => { setSel(r.key); setTimeout(() => landOn(document.getElementById('review-detail'), 'nearest'), 50); }} aria-pressed={sel === r.key} aria-label={`Evaluate ${r.key}`}>Evaluate</Button>
+                        <ActionCell status={st} label={st === 'Action Required' ? 'Respond' : 'View'} id={r.key} pressed={sel === r.key} onClick={() => { setSel(r.key); setTimeout(() => landOn(document.getElementById('review-detail'), 'nearest'), 50); }} />
                       </TableCell>
                     </TableRow>
                   );
@@ -132,13 +177,17 @@ export function Underwriting({ focusId, onRoute, onSelect }: { focusId?: string;
             </Table>
           </div>
           <div className="queue-footer">
-            <Pagination page={curPage} pageSize={pageSize} pageSizes={[10, 20, 50]} totalItems={shown.length} size="md" itemsPerPageText="Applications per page" itemRangeText={(min: number, max: number, total: number) => `Showing ${min} to ${max} of ${total} applications`} pageRangeText={(_: number, total: number) => `of ${total} page${total === 1 ? '' : 's'}`} onChange={({ page: p, pageSize: z }: { page: number; pageSize: number }) => { setPage(p); setPageSize(z); }} />
+            <Pagination page={curPage} pageSize={pageSize} pageSizes={[10, 20, 50]} totalItems={cols.rows.length} size="md" itemsPerPageText="Applications per page" itemRangeText={(min: number, max: number, total: number) => `Showing ${min} to ${max} of ${total} applications`} pageRangeText={(_: number, total: number) => `of ${total} page${total === 1 ? '' : 's'}`} onChange={({ page: p, pageSize: z }: { page: number; pageSize: number }) => { setPage(p); setPageSize(z); }} />
           </div>
         </section>
         {cur && (
           <section id="review-detail" tabIndex={-1} aria-label={`Underwriting detail for ${cur.client}`} className="status-panel p-6 focus:outline-none">
-            <h2 className="t-heading-03">{cur.client}</h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="t-heading-03">{cur.client}</h2>
+              <StatusTag status={life(cur).status} detail={life(cur).detail} />
+            </div>
             <p className="t-helper-01 text-[var(--cds-text-secondary)]">{cur.key}</p>
+            <p className="t-body-01 mt-2">{life(cur).why}</p>
             <div className="mt-6 callout px-4 py-3">
               {cur.ref ? (
                 <>
@@ -150,30 +199,24 @@ export function Underwriting({ focusId, onRoute, onSelect }: { focusId?: string;
               ) : (
                 <>
                   <p className="t-label-01 text-[var(--cds-text-secondary)]">{cur.status === 'approved' ? 'Decision' : openOf(cur).length ? 'Needs your response' : 'Waiting on'}</p>
-                  <p className="t-heading-02 mt-0.5">{cur.status === 'approved' ? 'Approved by Credit Underwriting' : openOf(cur).length ? `${openOf(cur).length} open condition${openOf(cur).length > 1 ? 's' : ''} from Credit Underwriting` : 'Credit Underwriting · decision due in 2 business days'}</p>
-                  <p className="t-body-01 mt-1">{cur.status === 'approved' ? 'Next: monitor documents and collateral in Active Credit.' : openOf(cur).length ? 'The decision follows once each condition is provided.' : 'No action is needed from you. Conditions, if any, will appear here.'}</p>
+                  <p className="t-heading-02 mt-0.5">{cur.status === 'approved' ? 'Approved by Credit Underwriting' : cur.status === 'declined' ? 'Declined by Credit Underwriting' : openOf(cur).length ? `${openOf(cur).length} open condition${openOf(cur).length > 1 ? 's' : ''} from Credit Underwriting` : cur.scenario?.m.req.uwStage === 'review' ? 'Credit Underwriting · under review' : 'Credit Underwriting · awaiting pickup'}</p>
+                  <p className="t-body-01 mt-1">{cur.status === 'approved' ? 'Next: monitor documents and collateral in Active Credit.' : cur.status === 'declined' ? 'The request is closed.' : openOf(cur).length ? 'The decision follows once each condition is provided.' : 'No action is needed from you. Conditions, if any, will appear here.'}</p>
                 </>
               )}
             </div>
             {(cur.scenario?.m.req.conditions ?? []).length > 0 && (
-              <section aria-labelledby="cond-h" className="mt-6">
-                <h3 id="cond-h" className="t-heading-02">Conditions</h3>
-                <ul className="mt-2 border-t border-[var(--cds-border-subtle-01)]">
+              <section id="conditions" tabIndex={-1} aria-labelledby="cond-h" className="mt-6 focus:outline-none">
+                <h3 id="cond-h" className="t-heading-02">Underwriting findings</h3>
+                <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-1">Respond to each open finding. Bankers can’t approve or decline; Credit Underwriting owns the decision.</p>
+                <ul className="mt-3 space-y-3">
                   {cur.scenario!.m.req.conditions!.map((c) => (
-                    <li key={c.id} className="py-3 border-b border-[var(--cds-border-subtle-01)]">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="t-body-01">{c.text}</p>
-                        <Tag tone={c.status === 'open' ? 'warning' : 'success'}>{c.status === 'open' ? 'Open' : 'Provided'}</Tag>
-                      </div>
-                      <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-1">Issued {c.at}{c.providedAt ? ` · provided ${c.providedAt}` : ''}</p>
-                      {c.status === 'open' && <Button kind="primary" size="sm" className="mt-2" onClick={() => provide(cur, c.id)}>Mark as provided</Button>}
-                    </li>
+                    <li key={c.id}><Finding c={c} client={cur.client} requested={cur.requested} onRespond={(resp) => respond(cur, c, resp)} /></li>
                   ))}
                 </ul>
               </section>
             )}
             {cur.ref && cur.ref.conditions.length > 0 && (
-              <section aria-labelledby="refcond-h" className="mt-6">
+              <section id="conditions" tabIndex={-1} aria-labelledby="refcond-h" className="mt-6 focus:outline-none">
                 <h3 id="refcond-h" className="t-heading-02">Conditions</h3>
                 <ul className="mt-2 border-t border-[var(--cds-border-subtle-01)]">
                   {cur.ref.conditions.map((c) => (
@@ -206,15 +249,25 @@ export function Underwriting({ focusId, onRoute, onSelect }: { focusId?: string;
             {cur.scenario ? (
               cur.status === 'approved' ? (
                 <InlineNotification kind="success" lowContrast hideCloseButton className="!max-w-none mt-6" title="Approved" subtitle={`Approved credit limit ${fmtMoney(approvedLimit(cur.requested, cur.power))}, ${cur.scenario.m.req.approvedAt}.`} />
+              ) : cur.status === 'declined' ? (
+                <InlineNotification kind="error" lowContrast hideCloseButton className="!max-w-none mt-6" title="Declined" subtitle={`Declined ${cur.scenario.m.req.declinedAt}. The submission history is kept on the request.`} />
               ) : (
-                <div className="mt-6 border border-dashed border-[var(--cds-border-strong-01)] p-4">
-                  <p className="t-helper-01 text-[var(--cds-text-secondary)]">Demo actions: simulate what Credit Underwriting does so the rest of the lifecycle can be explored.</p>
+                <section aria-labelledby="uw-sim-h" className="mt-6 border border-dashed border-[var(--cds-border-strong-01)] p-4">
+                  <h3 id="uw-sim-h" className="t-heading-01">Credit Underwriting (simulated)</h3>
+                  <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-1">Demo controls that stand in for the underwriter. They are not banker actions: a banker can respond, correct and resubmit, but never approve.</p>
                   <div className="mt-3 flex flex-wrap gap-3">
-                    {openOf(cur).length === 0 && <Button kind="tertiary" size="sm" onClick={() => setConfirmFor(cur.key)}>Simulate approval</Button>}
-                    {openOf(cur).length === 0 && <Button kind="ghost" size="sm" onClick={() => setConditionFor(cur.key)}>Simulate a condition</Button>}
+                    {cur.scenario.m.req.uwStage !== 'review' && <Button kind="ghost" size="sm" onClick={() => uwEvent(cur, 'Underwriting review started (simulated)', 'Assigned to an underwriter', () => ({ uwStage: 'review' }))}>Start review</Button>}
+                    {openOf(cur).length === 0 && <>
+                      <Button kind="ghost" size="sm" onClick={() => issue(cur, 'question', 'Explain the source of the $250,000 deposit to the pledged brokerage account on 10/02/2025.')}>Ask a question</Button>
+                      <Button kind="ghost" size="sm" onClick={() => setConditionFor(cur.key)}>Add a condition</Button>
+                      <Button kind="ghost" size="sm" onClick={() => setReturnFor(cur.key)}>Return for correction</Button>
+                      <Button kind="ghost" size="sm" onClick={() => issue(cur, 'decision', `Approve at a reduced limit of ${fmtMoney(Math.round(cur.requested * 0.8 / 1000) * 1000)}: the collateral mix supports less than requested. The borrower must accept the revised terms.`, Math.round(cur.requested * 0.8 / 1000) * 1000)}>Approve with changed terms</Button>
+                      <Button kind="ghost" size="sm" onClick={() => setConfirmFor(cur.key)}>Approve</Button>
+                      <Button kind="ghost" size="sm" onClick={() => uwEvent(cur, 'Underwriting decision (simulated)', 'Declined: estimated borrowing power not supported after revaluation', () => ({ status: 'declined', declinedAt: nowStamp() }))}>Decline</Button>
+                    </>}
                   </div>
-                  {openOf(cur).length > 0 && <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-2">A decision can be simulated once open conditions are provided.</p>}
-                </div>
+                  {openOf(cur).length > 0 && <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-2">Underwriting waits for your response to the open finding before its next step.</p>}
+                </section>
               )
             ) : (
               <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-6">Reference record{cur.line ? ': approved and booked as an active credit line' : ''}. Decisions can be simulated on the three scenario requests.</p>
@@ -237,12 +290,34 @@ export function Underwriting({ focusId, onRoute, onSelect }: { focusId?: string;
         onRequestSubmit={() => {
           if (!condTarget?.scenario) return;
           const text = 'Provide the most recent month-end statement for each pledged account.';
-          condTarget.scenario.m.setReq((p) => ({ ...p, conditions: [...(p.conditions ?? []), { id: `c${(p.conditions ?? []).length + 1}`, text, status: 'open', at: nowStamp() }] }));
-          logUnderwriting('Underwriting condition issued (simulated)', text, condTarget.key);
+          uwEvent(condTarget, 'Underwriting condition issued (simulated)', text, (p) => ({ uwStage: 'review', conditions: [...(p.conditions ?? []), { id: `c${(p.conditions ?? []).length + 1}`, kind: 'condition', text, status: 'open', at: nowStamp() }] }));
           setConditionFor(null);
         }}
       >
         {condTarget && <p className="t-body-01">Demo action. Credit Underwriting asks {condTarget.client}’s banker for the most recent month-end statement for each pledged account. The request shows Condition Requested in Submitted Applications and here. No real request is made.</p>}
+      </Modal>
+      <Modal
+        open={!!returnTarget}
+        size="sm"
+        modalHeading="Simulate a return for correction?"
+        primaryButtonText="Simulate return"
+        secondaryButtonText="Cancel"
+        onRequestClose={() => setReturnFor(null)}
+        onRequestSubmit={() => {
+          if (!returnTarget?.scenario) return;
+          uwEvent(returnTarget, 'Returned for correction (simulated)', 'Source of repayment not supported by statements; requested amount above approval authority', (p) => ({
+            status: 'returned',
+            returnedAt: nowStamp(),
+            uwStage: undefined,
+            corrections: [
+              { id: 'repay', short: 'Correct the primary source of repayment', text: 'Underwriting could not reconcile the primary source of repayment with the client’s statements. Select the source the documents support.', field: 'repay1', previous: p.repay1, section: 'loan', anchor: 'loan-details' },
+              { id: 'amount', short: 'Correct the requested loan amount', text: 'The request is above the officer’s approval authority for this collateral mix. Reduce the Requested Loan Amount, or route the request to the credit committee.', field: 'requested', previous: String(p.requested), section: 'customer', anchor: 'requested-amount' },
+            ],
+          }));
+          setReturnFor(null);
+        }}
+      >
+        {returnTarget && <p className="t-body-01">Demo action. Credit Underwriting returns {returnTarget.client}’s request to the loan officer with two corrections. It moves back to Evaluations as Action Required, keeps its submission history, and can be resubmitted once both are corrected. No real request is made.</p>}
       </Modal>
       <Modal
         open={!!target}
@@ -254,8 +329,7 @@ export function Underwriting({ focusId, onRoute, onSelect }: { focusId?: string;
         onRequestSubmit={() => {
           if (!target?.scenario) return;
           const at = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-          target.scenario.m.setReq((p) => ({ ...p, status: 'approved', approvedAt: `11/19/2025, ${at}` }));
-          logUnderwriting('Underwriting decision (simulated)', `Approved; credit limit ${fmtMoney(approvedLimit(target.requested, target.power))}`, target.key);
+          uwEvent(target, 'Underwriting decision (simulated)', `Approved; credit limit ${fmtMoney(approvedLimit(target.requested, target.power))}`, () => ({ status: 'approved', approvedAt: `11/19/2025, ${at}` }));
           setConfirmFor(null);
         }}
       >
@@ -296,8 +370,21 @@ export function ActiveCredit({ focusId, onRoute, onSelect }: { focusId?: string;
   const all: LineVM[] = [...approved, ...ACTIVE_LINES, ...LINE_REFS];
   const [lp, setLp] = useState(1);
   const [lps, setLps] = useState(10);
-  const linePages = Math.max(1, Math.ceil(all.length / lps));
-  const lineVisible = all.slice((Math.min(lp, linePages) - 1) * lps, Math.min(lp, linePages) * lps);
+  const ltv = (l: LineVM) => (l.collateralValue ? l.outstanding / l.collateralValue : 0);
+  const nearCall = (l: LineVM) => ltv(l) >= l.maintenanceLtv - 0.1;
+  const lineCols: Col<LineVM>[] = [
+    { key: 'client', label: 'Client and line', type: 'text', get: (l) => `${l.client} ${l.id}` },
+    { key: 'limit', label: 'Approved credit limit', type: 'number', num: true, money: true, get: (l) => l.limit },
+    { key: 'out', label: 'Outstanding balance', type: 'number', num: true, money: true, get: (l) => l.outstanding },
+    { key: 'avail', label: 'Available credit', type: 'number', num: true, money: true, get: (l) => l.limit - l.outstanding },
+    { key: 'coll', label: 'Collateral market value', type: 'number', num: true, money: true, get: (l) => l.collateralValue },
+    { key: 'ltv', label: 'LTV %', type: 'number', num: true, get: (l) => Math.round(ltv(l) * 1000) / 10 },
+    { key: 'docs', label: 'Documents', type: 'enum', get: (l) => (l.docs.some((d) => d.status !== 'Complete') ? 'Outstanding' : 'Complete') },
+    { key: 'mon', label: 'Monitoring', type: 'enum', get: (l) => (nearCall(l) ? (global.acknowledgedAlerts.includes(l.id) ? 'Alert acknowledged' : 'LTV alert') : 'Within limits') },
+  ];
+  const lc = useColumns(all, lineCols, () => setLp(1));
+  const linePages = Math.max(1, Math.ceil(lc.rows.length / lps));
+  const lineVisible = lc.rows.slice((Math.min(lp, linePages) - 1) * lps, Math.min(lp, linePages) * lps);
   const [sel, setSelState] = useState(focusId && all.some((l) => l.id === focusId) ? focusId : all[0].id);
   const setSel = (id: string) => { setSelState(id); onSelect?.(id); };
   /** THEO-04: one way to open a line, from the alerts or the table: select it and land on its detail. */
@@ -309,8 +396,6 @@ export function ActiveCredit({ focusId, onRoute, onSelect }: { focusId?: string;
     setTimeout(() => landOn(document.getElementById('credit-detail')), 80);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const cur = all.find((l) => l.id === sel) ?? all[0];
-  const ltv = (l: LineVM) => (l.collateralValue ? l.outstanding / l.collateralValue : 0);
-  const nearCall = (l: LineVM) => ltv(l) >= l.maintenanceLtv - 0.1;
   const events = global.audit.filter((e) => e.requestId === cur.id);
   // Attention: an unacknowledged LTV alert outranks outstanding documents.
   const attention = all.flatMap((l) => {
@@ -357,18 +442,12 @@ export function ActiveCredit({ focusId, onRoute, onSelect }: { focusId?: string;
       <h2 id="lines-h" className="t-heading-03">All credit lines</h2>
       <p className="t-body-01 text-[var(--cds-text-secondary)] mt-1 mb-4">Loan-to-value (LTV) = outstanding balance ÷ collateral market value. A maintenance call may be issued at the maintenance threshold.</p>
       <TableContainer aria-labelledby="lines-h">
+        <ActiveFilters st={lc} count={lc.rows.length} total={all.length} noun="credit lines" />
         <div className="overflow-x-auto">
           <Table aria-label="Credit lines" size="lg" className="queue-table min-w-[1040px]">
             <TableHead>
               <TableRow>
-                <TableHeader>Client and line</TableHeader>
-                <TableHeader className="num">Approved credit limit</TableHeader>
-                <TableHeader className="num">Outstanding balance</TableHeader>
-                <TableHeader className="num">Available credit</TableHeader>
-                <TableHeader className="num">Collateral market value</TableHeader>
-                <TableHeader className="num">LTV</TableHeader>
-                <TableHeader>Documents</TableHeader>
-                <TableHeader>Monitoring</TableHeader>
+                {lineCols.map((c) => <ColHeader key={c.key} st={lc} k={c.key} className={c.num ? 'num' : undefined} />)}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -398,7 +477,7 @@ export function ActiveCredit({ focusId, onRoute, onSelect }: { focusId?: string;
           </Table>
         </div>
         <div className="queue-footer">
-          <Pagination page={Math.min(lp, linePages)} pageSize={lps} pageSizes={[10, 20, 50]} totalItems={all.length} size="md" itemsPerPageText="Lines per page" itemRangeText={(min: number, max: number, total: number) => `Showing ${min} to ${max} of ${total} credit lines`} pageRangeText={(_: number, total: number) => `of ${total} page${total === 1 ? '' : 's'}`} onChange={({ page: p, pageSize: z }: { page: number; pageSize: number }) => { setLp(p); setLps(z); }} />
+          <Pagination page={Math.min(lp, linePages)} pageSize={lps} pageSizes={[10, 20, 50]} totalItems={lc.rows.length} size="md" itemsPerPageText="Lines per page" itemRangeText={(min: number, max: number, total: number) => `Showing ${min} to ${max} of ${total} credit lines`} pageRangeText={(_: number, total: number) => `of ${total} page${total === 1 ? '' : 's'}`} onChange={({ page: p, pageSize: z }: { page: number; pageSize: number }) => { setLp(p); setLps(z); }} />
         </div>
       </TableContainer>
 
@@ -503,4 +582,74 @@ function maskAccount(label: string) {
   const m = label.match(/^(.*?)\s*•+\s*(\d{4})$/);
   if (!m) return label;
   return <>{m[1]} <span className="t-code whitespace-nowrap">••••{m[2]}</span></>;
+}
+
+interface Resp { text: string; decision?: 'Accept' | 'Deny' | 'Change Terms'; method?: string; date?: string }
+const KIND_LABEL = { condition: 'Condition', question: 'Question', decision: 'Decision · needs acknowledgment' } as const;
+
+/** One underwriting finding and the banker's response to it. */
+function Finding({ c, client, requested, onRespond }: { c: Condition; client: string; requested: number; onRespond: (r: Resp) => void }) {
+  const kind = c.kind ?? 'condition';
+  const open = c.status === 'open';
+  const [text, setText] = useState('');
+  const [method, setMethod] = useState('');
+  const [date, setDate] = useState('');
+  const [decision, setDecision] = useState<Resp['decision'] | ''>('');
+  const [ack, setAck] = useState(false);
+  const [err, setErr] = useState('');
+  const [tried, setTried] = useState(false);
+  const dateOk = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(date.trim());
+  const submit = () => {
+    setTried(true);
+    if (kind === 'question' && !text.trim()) return setErr('Enter your answer.');
+    if (kind === 'decision') {
+      if (!method || !date || !decision) return setErr('Record how and when the decision was communicated, and the borrower’s response.');
+      if (!dateOk) return setErr('Enter the date communicated as MM/DD/YYYY.');
+      if (!ack) return setErr('Confirm that you communicated the decision to the borrower.');
+    }
+    setErr('');
+    onRespond({ text: text.trim(), decision: decision || undefined, method, date });
+  };
+  const doneLabel = kind === 'decision' ? 'Response recorded' : kind === 'question' ? 'Answered' : 'Provided';
+  return (
+    <div className={cx('finding', `t-${kind}`, !open && 'is-done')}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="t-label-01 text-[var(--cds-text-secondary)]">{KIND_LABEL[kind]}</p>
+          <p className="t-body-01 mt-0.5">{c.text}</p>
+        </div>
+        <Tag tone={open ? 'warning' : 'success'}>{open ? 'Open' : doneLabel}</Tag>
+      </div>
+      {kind === 'decision' && c.terms != null && (
+        <dl className="grid grid-cols-2 gap-4 mt-3 max-w-md"><KV label="Requested" value={fmtMoney(requested)} mono /><KV label="Revised limit offered" value={fmtMoney(c.terms)} mono /></dl>
+      )}
+      <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-2">Issued {c.at}{c.providedAt ? ` · responded ${c.providedAt}` : ''}</p>
+      {!open && c.response && <p className="t-body-01 mt-2"><span className="text-[var(--cds-text-secondary)]">Your response: </span>{c.response}</p>}
+      {open && (
+        <div className="mt-3 space-y-4 max-w-2xl">
+          {kind === 'decision' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Select id={`m-${c.id}`} labelText="Notification method" invalid={tried && !method} invalidText="Choose how the decision was communicated." value={method} onChange={(e) => setMethod(e.target.value)}>
+                <SelectItem value="" text="Choose" /><SelectItem value="Phone" text="Phone" /><SelectItem value="Email" text="Email" /><SelectItem value="In person" text="In person" />
+              </Select>
+              <TextInput id={`d-${c.id}`} labelText="Date communicated" placeholder="MM/DD/YYYY" invalid={tried && !dateOk} invalidText="Enter the date as MM/DD/YYYY." value={date} onChange={(e) => setDate(e.target.value)} />
+              <div className="sm:col-span-2">
+                <RadioButtonGroup legendText={`${client}’s response`} name={`r-${c.id}`} invalid={tried && !decision} invalidText="Choose the borrower’s response." valueSelected={decision} onChange={(v) => setDecision(v as Resp['decision'])}>
+                  <RadioButton id={`r-${c.id}-a`} labelText="Accept revised terms" value="Accept" />
+                  <RadioButton id={`r-${c.id}-d`} labelText="Decline the offer" value="Deny" />
+                  <RadioButton id={`r-${c.id}-c`} labelText="Ask for changed terms" value="Change Terms" />
+                </RadioButtonGroup>
+              </div>
+            </div>
+          )}
+          {(
+            <TextArea id={`t-${c.id}`} labelText={kind === 'question' ? 'Your answer' : kind === 'decision' ? 'Note to underwriting (optional)' : 'Note (optional)'} invalid={tried && kind === 'question' && !text.trim()} invalidText="Enter your answer." rows={2} value={text} onChange={(e) => setText(e.target.value)} />
+          )}
+          {kind === 'decision' && <Checkbox id={`ack-${c.id}`} labelText="I communicated this decision to the borrower and recorded their response." invalid={tried && !ack} invalidText="Confirm before recording the response." checked={ack} onChange={(_, { checked }) => setAck(checked)} />}
+          {err && <p role="alert" className="t-helper-01 text-[var(--cds-text-error)]">{err}</p>}
+          <Button kind="primary" size="sm" onClick={submit}>{kind === 'decision' ? 'Record borrower response' : kind === 'question' ? 'Send answer' : 'Mark as provided'}</Button>
+        </div>
+      )}
+    </div>
+  );
 }

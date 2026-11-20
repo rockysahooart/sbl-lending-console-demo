@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
+  Accordion,
+  AccordionItem,
   Button,
   Checkbox,
   InlineNotification,
@@ -19,14 +21,15 @@ import {
   TableRow,
   TextInput,
 } from '@carbon/react';
-import { ArrowDown, CheckmarkFilled, CheckmarkOutline, ChevronDown, DocumentDownload, Search as SearchIcon, View, Warning } from '@carbon/icons-react';
+import { ArrowDown, ArrowRight, CheckmarkFilled, CheckmarkOutline, ChevronDown, DocumentDownload, Search as SearchIcon, View, Warning } from '@carbon/icons-react';
 import { useDemo } from '../DemoContext';
 import { usePersistentState } from '../../app/state/ConsoleStore';
 import { ASSET_CLASS_LABEL, PEOPLE, fmtMoney, fmtPct, personById, type Person, type ScenarioId } from '../data';
 import { ROLE_LABEL, STEPS, USERS, nowStamp, useAfterRequest, useAudit, type Place, type RequestModel, type Section, type YN } from './state';
 import { ANCHOR, guidance } from './guidance';
+import { appState, gatesStep, itemsOf, type Item } from './lifecycle';
 import { AcknowledgmentModal, EVAL_STATUS, landOn } from './Evaluation';
-import { Check, KV, Money, SelectField, Tag, TextField, cx } from './ui';
+import { Check, KV, Money, SelectField, StatusTag, Tag, TextField, cx } from './ui';
 import type { Route } from './AfterApp';
 
 /*
@@ -50,7 +53,11 @@ function focusAnchor(id: string, delay = 60) {
   window.setTimeout(() => landOn(document.getElementById(id)), delay);
 }
 
-export function Workspace({ route, onRoute }: { route: { page: 'request'; id: ScenarioId; section: Section } | { page: 'confirmation'; id: ScenarioId }; onRoute: (r: Route) => void }) {
+/** Where a fix link landed and what to show there (rendered inside the matching StepSection). */
+const FixCtx = createContext<{ anchor?: string; node?: ReactNode }>({});
+const LOCKED_STATUSES = ['submitted', 'approved', 'declined'];
+
+export function Workspace({ route, onRoute }: { route: { page: 'request'; id: ScenarioId; section: Section; fix?: string } | { page: 'confirmation'; id: ScenarioId }; onRoute: (r: Route) => void }) {
   const m = useAfterRequest(route.id);
   const { s, req, update } = m;
   const section: Section = route.page === 'request' ? route.section : 'collateral';
@@ -86,25 +93,65 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
     if (a) { pendingAnchor.current = null; focusAnchor(a); }
   }, [section]);
 
+  const fix = route.page === 'request' ? route.fix : undefined;
+  const items = itemsOf(m);
+  const fixItem = fix && fix !== 'submit' ? items.find((i) => i.id === fix) : undefined;
+  // Remember what the fix link pointed at, so the callout can confirm it once resolved.
+  const fixMemo = useRef<{ id?: string; item?: Item }>({});
+  if (fix && fixItem) fixMemo.current = { id: fix, item: fixItem };
+  if (fix && fixMemo.current.id !== fix && !fixItem) fixMemo.current = { id: fix };
+  const fixAnchor = fix === 'submit' ? 'collaterals' : (fixItem ?? fixMemo.current.item)?.anchor;
+  // Land on the exact field and mark it until the user moves on.
+  useEffect(() => {
+    if (!fixAnchor || route.page !== 'request') return;
+    const t = window.setTimeout(() => {
+      const el = document.getElementById(fix === 'submit' ? 'submit-request' : fixAnchor);
+      if (!el) return;
+      el.setAttribute('data-fix', fixItem?.kind === 'correction' ? 'correction' : 'task');
+      landOn(document.getElementById(fixAnchor) ?? el);
+    }, 80);
+    return () => { window.clearTimeout(t); document.querySelectorAll('[data-fix]').forEach((n) => n.removeAttribute('data-fix')); };
+  }, [fix, section]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (route.page === 'confirmation') return <Confirmation m={m} onRoute={onRoute} />;
-  const locked = req.status !== 'draft';
+  const locked = LOCKED_STATUSES.includes(req.status);
+  const st = appState(m);
   const step = STEPS.find((x) => x.key === section)!;
   const idx = STEPS.indexOf(step);
+  // Prerequisites: a step's own required items must be complete before moving on to the steps that depend on it.
+  const gating = (k: Section) => items.filter((i) => i.place === k && gatesStep(i) && i.kind !== 'waiting');
+  const stepOpen = gating(section);
+  const canNext = locked || stepOpen.length === 0;
+  const firstBlocked = STEPS.findIndex((x) => gating(x.key).length > 0);
+  const reachable = (i: number) => locked || firstBlocked < 0 || i <= firstBlocked || i <= idx;
   const next = () => {
+    if (!canNext) return;
     update({ completed: (req.completed ?? []).includes(section) ? req.completed : [...(req.completed ?? []), section] });
     onRoute({ page: 'request', id: route.id, section: STEPS[idx + 1].key });
   };
   const back = () => (idx === 0 ? onRoute({ page: 'evaluation', id: route.id }) : onRoute({ page: 'request', id: route.id, section: STEPS[idx - 1].key }));
+  const goItem = (i: Item) => onRoute(i.route);
+
+  const fixNode = fix && route.page === 'request' ? (
+    <FixCallout fix={fix} item={fixItem} resolvedItem={!fixItem ? fixMemo.current.item : undefined} next={st.next} open={items.length} onGo={(r) => onRoute(r)} />
+  ) : null;
 
   return (
+    <FixCtx.Provider value={{ anchor: fixAnchor, node: fixNode }}>
     <div className="px-4 sm:px-8 pt-6">
       <header className="mb-6">
         <p className="t-label-01 text-[var(--cds-text-secondary)]">Loan Request · {s.entityName ?? s.primary.name} · {s.requestId}</p>
-        <h1 className="t-heading-05 mt-1">{step.n}. {step.label}</h1>
+        <div className="flex flex-wrap items-center gap-3 mt-1">
+          <h1 className="t-heading-05">{step.n}. {step.label}</h1>
+          <StatusTag status={st.status} />
+        </div>
+        <p className="t-body-01 text-[var(--cds-text-secondary)] mt-1">{st.detail !== st.status ? `${st.detail}. ` : ''}{st.why}</p>
       </header>
       {locked && (
-        <InlineNotification kind="info" lowContrast hideCloseButton className="!max-w-none mb-6" title="Submitted to underwriting" subtitle={`Submitted ${req.submittedAt}. This request is read-only.`} />
+        <InlineNotification kind="info" lowContrast hideCloseButton className="!max-w-none mb-6" title={req.status === 'submitted' ? 'Submitted to underwriting' : req.status === 'approved' ? 'Approved' : 'Declined'} subtitle={`${req.status === 'submitted' ? `Submitted ${req.submittedAt}` : req.status === 'approved' ? `Approved ${req.approvedAt}` : `Declined ${req.declinedAt}`}. This request is read-only; the submitted information is shown below.`} />
       )}
+      {req.status === 'returned' && <ReturnedBanner m={m} items={items} onGo={goItem} />}
+      {(req.history ?? []).length > 0 && <SubmissionHistory m={m} />}
       <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[224px_minmax(0,1fr)_340px] gap-8 items-start">
         {/* KENJI-03: compact step line below lg — the full list is one tap away, and the status panel one jump away. */}
         <div className="step-compact lg:hidden">
@@ -113,24 +160,26 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
             <ChevronDown size={16} aria-hidden="true" className={cx('transition-transform motion-reduce:transition-none', stepsOpen && 'rotate-180')} />
           </button>
           <a href="#application-status" className="step-compact__status cds--link" onClick={(e) => { e.preventDefault(); landOn(document.getElementById('application-status')); }}>
-            Application status{m.readiness.some((r) => !r.done) && <span className="tabular-nums"> · {m.readiness.filter((r) => !r.done).length} open</span>}
+            Application status{items.length > 0 && <span className="tabular-nums"> · {items.length} open</span>}
             <ArrowDown size={16} aria-hidden="true" />
           </a>
         </div>
-        <nav id="loan-request-steps" aria-label="Loan request steps" className={cx('lg:sticky lg:top-6 lg:block', stepsOpen ? 'block' : 'hidden', !attempted && 'progress-calm')}>
-          <ProgressIndicator vertical currentIndex={idx} onChange={(i: number) => go(STEPS[i].key)} spaceEqually={false}>
-            {STEPS.map((st, i) => {
-              const state = m.sectionState(st.key);
-              const open = m.readiness.filter((r) => r.step === st.key && !r.done).length;
+        <nav id="loan-request-steps" aria-label="Loan request steps" className={cx('lg:sticky lg:top-6 lg:block', stepsOpen ? 'block' : 'hidden', 'progress-calm')}>
+          <ProgressIndicator vertical currentIndex={idx} onChange={(i: number) => { if (reachable(i)) go(STEPS[i].key); }} spaceEqually={false}>
+            {STEPS.map((stp, i) => {
+              const state = m.sectionState(stp.key);
+              const open = items.filter((r) => r.place === stp.key).length;
               const current = i === idx;
+              const can = reachable(i);
               return (
                 <ProgressStep
-                  key={st.key}
-                  label={st.label}
-                  secondaryLabel={current ? 'In progress' : state === 'complete' ? 'Completed' : state === 'attention' ? `${open} open item${open > 1 ? 's' : ''}` : 'Not started'}
+                  key={stp.key}
+                  label={stp.label}
+                  secondaryLabel={current ? 'In progress' : !can ? `Complete ${STEPS[firstBlocked].label} first` : state === 'complete' ? 'Completed' : open ? `${open} open item${open > 1 ? 's' : ''}` : 'Not started'}
                   complete={!current && state === 'complete'}
-                  invalid={!current && state === 'attention'}
-                  translateWithId={(mid: string) => stepStatusText(mid, attempted)}
+                  invalid={!current && can && state === 'attention'}
+                  disabled={!can}
+                  translateWithId={(mid: string) => stepStatusText(mid, false)}
                 />
               );
             })}
@@ -143,23 +192,119 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
               {section === 'customer' && <CustomerStep m={m} onGo={go} />}
               {section === 'parties' && <PartiesStep m={m} />}
               {section === 'loan' && <LoanStep m={m} />}
-              {section === 'collateral' && <CollateralStep m={m} onGo={go} attempted={attempted} setAttempted={setAttempted} onSubmitted={() => onRoute({ page: 'confirmation', id: route.id })} />}
+              {section === 'collateral' && <CollateralStep m={m} onGo={go} items={items} onGoItem={goItem} onSubmitted={() => onRoute({ page: 'confirmation', id: route.id })} />}
             </div>
           </fieldset>
           {section !== 'collateral' && (
             <footer className="step-footer mx-auto w-record">
               <Button kind="ghost" size="md" onClick={back}>{idx === 0 ? 'Back to Evaluation' : 'Back'}</Button>
-              <div className="flex items-center gap-4">
-                <p className="t-helper-01 text-[var(--cds-text-secondary)] hidden sm:block">Changes are saved automatically.</p>
-                <Button size="md" onClick={next}>Next</Button>
+              <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+                <p id="next-help" className="t-helper-01 text-[var(--cds-text-secondary)] max-w-md text-right" aria-live="polite">
+                  {canNext ? 'Changes are saved automatically.' : (
+                    <>
+                      To continue, complete {stepOpen.length} item{stepOpen.length > 1 ? 's' : ''} on this step:{' '}
+                      {stepOpen.slice(0, 2).map((i, k) => (
+                        <span key={i.id}>{k > 0 && '; '}<button type="button" className="cds--link t-helper-01" onClick={() => goItem(i)}>{i.label}</button></span>
+                      ))}
+                      {stepOpen.length > 2 && ` and ${stepOpen.length - 2} more`}. Your draft is saved.
+                    </>
+                  )}
+                </p>
+                <Button size="md" onClick={next} disabled={!canNext} aria-describedby="next-help">Next</Button>
               </div>
             </footer>
           )}
         </div>
-        <StatusPanel m={m} onGo={go} blocked={attempted && section === 'collateral'} />
+        <StatusPanel m={m} onGo={go} />
       </div>
       <AcknowledgmentModal m={m} open={ackOpen} onClose={() => setAckOpen(false)} onStart={() => setAckOpen(false)} startLabel="Save acknowledgment" />
     </div>
+    </FixCtx.Provider>
+  );
+}
+
+/** What a fix link is about, shown inside the section it points at. Confirms when resolved and offers the next item. */
+function FixCallout({ fix, item, resolvedItem, next, open, onGo }: { fix: string; item?: Item; resolvedItem?: Item; next?: { label: string; route: Route; explain: string }; open: number; onGo: (r: Route) => void }) {
+  if (fix === 'submit') {
+    return open
+      ? <InlineNotification kind="warning" lowContrast hideCloseButton className="!max-w-none mb-4" title={`${open} item${open > 1 ? 's' : ''} to complete before you can submit`} subtitle="They are listed below with links to each one." />
+      : <InlineNotification kind="success" lowContrast hideCloseButton className="!max-w-none mb-4" title="Ready to submit" subtitle="Every readiness check is complete. Review the collaterals, then select Submit." />;
+  }
+  if (item) {
+    return (
+      <div className="fix-callout mb-4" role="status" data-kind={item.kind}>
+        <InlineNotification kind={item.kind === 'correction' ? 'warning' : 'info'} lowContrast hideCloseButton className="!max-w-none" title={item.kind === 'correction' ? `Action required: ${item.problem ?? item.label}` : item.label} subtitle={item.explain} />
+      </div>
+    );
+  }
+  if (resolvedItem) {
+    return (
+      <div className="fix-callout mb-4 flex flex-wrap items-center gap-4" role="status">
+        <InlineNotification kind="success" lowContrast hideCloseButton className="!max-w-none flex-1" title={`Done: ${resolvedItem.label}`} subtitle={open ? `${open} item${open > 1 ? 's' : ''} still open.` : 'Every readiness check is complete.'} />
+        {next && <Button size="md" renderIcon={ArrowRight} onClick={() => onGo(next.route)}>{`Next: ${next.label}`}</Button>}
+      </div>
+    );
+  }
+  return null;
+}
+
+/** Returned for correction: why, what to change (editable), and what was submitted before (read-only). */
+function ReturnedBanner({ m, items, onGo }: { m: RequestModel; items: Item[]; onGo: (i: Item) => void }) {
+  const { req } = m;
+  const corrections = req.corrections ?? [];
+  const snap = req.snapshot;
+  return (
+    <section aria-labelledby="returned-h" className="returned-banner mb-6">
+      <InlineNotification kind="warning" lowContrast hideCloseButton className="!max-w-none" title="Returned for correction" subtitle={`Credit Underwriting returned this request ${req.returnedAt}. Correct the items below, then resubmit from Collaterals. Everything else you submitted is kept.`} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+        <div>
+          <h2 id="returned-h" className="t-heading-compact-01">To correct (editable)</h2>
+          <ul className="mt-2 space-y-2">
+            {corrections.map((c) => {
+              const open = items.find((i) => i.id === `ret-${c.id}`);
+              return (
+                <li key={c.id} className="t-body-01 flex items-start gap-2">
+                  <span className="flex-1"><span className="font-semibold">{c.short}.</span> {c.text}</span>
+                  {open ? <Button kind="tertiary" size="sm" onClick={() => onGo(open)}>Correct</Button> : <Tag tone="success">Corrected</Tag>}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        {snap && (
+          <div>
+            <h2 className="t-heading-compact-01">Previously submitted ({snap.at.split(',')[0]}, read-only)</h2>
+            <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-2">
+              <KV label="Requested Loan Amount" value={fmtMoney(snap.requested)} mono />
+              <KV label="Total Maximum Borrowing Power" value={fmtMoney(snap.power)} mono />
+              <KV label="Primary Source of Repayment" value={snap.repay1 || '—'} />
+              <KV label="Primary Source of Wealth" value={snap.wealth1 || '—'} />
+              <KV label="Collaterals selected" value={String(snap.pledged)} />
+              <KV label="Booking Cost Center" value={snap.costCenter} />
+            </dl>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** Every submission, return, condition and decision, oldest first. Kept across resubmission. */
+function SubmissionHistory({ m }: { m: RequestModel }) {
+  const h = m.req.history ?? [];
+  return (
+    <Accordion className="mb-6">
+      <AccordionItem title={`Submission history (${h.length})`}>
+        <ol className="space-y-2">
+          {h.map((e, i) => (
+            <li key={i} className="grid grid-cols-[150px_1fr] gap-4 t-body-01">
+              <span className="tabular-nums text-[var(--cds-text-secondary)]">{e.at}</span>
+              <span><span className="font-semibold">{e.event}</span> · {e.by}{e.detail && <span className="block t-helper-01 text-[var(--cds-text-secondary)]">{e.detail}</span>}</span>
+            </li>
+          ))}
+        </ol>
+      </AccordionItem>
+    </Accordion>
   );
 }
 
@@ -167,6 +312,8 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
 
 /** A titled section of a step; the id is where "go to" links land. */
 function StepSection({ id, title, right, children, description }: { id: string; title: string; right?: ReactNode; children: ReactNode; description?: ReactNode }) {
+  const fx = useContext(FixCtx);
+  const showFix = !!fx.node && (fx.anchor === id || (id === 'co-search' && fx.anchor === 'co-details'));
   return (
     <section aria-labelledby={`${id}-h`} className="step-section">
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
@@ -176,6 +323,7 @@ function StepSection({ id, title, right, children, description }: { id: string; 
         </div>
         {right}
       </div>
+      {showFix && fx.node}
       <div id={id} tabIndex={-1} className="focus:outline-none">{children}</div>
     </section>
   );
@@ -244,6 +392,36 @@ function MaskedId({ person, requestId }: { person: Person; requestId: string }) 
 }
 
 /** ADA-08: one verification date (the client record's) for every party; an expired ID is never shown as "verified". */
+/** Before's ID-card profile, modernised: credential band, portrait block, identifiers, ID footer. */
+function IdCard({ role, person, sub, requestId, idNumber, expires, expired }: { role: string; person: Person; sub?: string; requestId: string; idNumber: string; expires: string; expired: boolean }) {
+  const initials = person.name.split(' ').map((x) => x[0]).join('').slice(0, 2);
+  return (
+    <section className={`id-card${expired ? ' is-expired' : ''}`} aria-label={`${role} identification card: ${person.name}`}>
+      <div className="id-card__band"><span>{role}</span><span>Client record · 11/18/2025</span></div>
+      <div className="id-card__body">
+        <span className="id-card__photo" aria-hidden="true">{initials}</span>
+        <div className="id-card__main">
+          <p className="t-heading-03">{person.name}</p>
+          {sub && <p className="t-helper-01 text-[var(--cds-text-secondary)]">{sub}</p>}
+          <dl className="id-card__ids grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">
+            <KV label="DOB" value={person.dob} mono />
+            <KV label="SSN" value={<MaskedId person={person} requestId={requestId} />} />
+            <KV label="MDM ID" value={person.mdmId} mono />
+            <KV label="Power ID" value={person.powerId} mono />
+            <KV label="Phone" value={person.phone} />
+            <KV label="Email" value={<>{person.email.split('@')[0]}<wbr />@{person.email.split('@').slice(1).join('@')}</>} />
+          </dl>
+        </div>
+      </div>
+      <div className="id-card__foot">
+        <span><span className="lbl">{person.idType}</span><span className="tabular-nums">{idNumber}</span></span>
+        <span><span className="lbl">Expires</span><span className="tabular-nums">{expires}</span></span>
+        <Tag tone={expired ? 'error' : 'success'}>{expired ? 'Expired' : 'Valid'}</Tag>
+      </div>
+    </section>
+  );
+}
+
 function Screening({ date = '11/18/2025', idExpired = false }: { date?: string; idExpired?: boolean }) {
   return (
     <span className="inline-flex flex-wrap gap-2">
@@ -284,24 +462,15 @@ function CustomerStep({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: strin
       </StepSection>
 
       <StepSection id="customer-info" title="Customer Information" right={<Screening />} description="From the client record of 11/18/2025. Read-only; request a correction if anything is out of date.">
-        <div className="customer-card">
-          <div className="flex items-center gap-3 md:pr-6 md:border-r border-[var(--cds-border-subtle-01)]">
-            <span className="customer-card__avatar" aria-hidden="true">{p.name.split(' ').map((x) => x[0]).join('').slice(0, 2)}</span>
-            <div>
-              <p className="t-label-01 text-[var(--cds-text-secondary)]">{s.entityName ? 'Authorized Signer' : 'Primary Borrower'}</p>
-              <p className="t-heading-02">{p.name}</p>
-              {s.entityName && <p className="t-helper-01 text-[var(--cds-text-secondary)]">{s.entityName}</p>}
-            </div>
-          </div>
-          <dl className="customer-card__ids grid grid-cols-2 2xl:grid-cols-3 gap-x-6 gap-y-3 flex-1 min-w-0 basis-full md:basis-0">
-            <KV label="DOB" value={p.dob} mono />
-            <KV label="SSN" value={<MaskedId person={p} requestId={s.requestId} />} />
-            <KV label="MDM ID" value={p.mdmId} mono />
-            <KV label="Power ID" value={p.powerId} mono />
-            <KV label="Phone" value={p.phone} />
-            <KV label="Email" value={p.email} />
-          </dl>
-        </div>
+        <IdCard
+          role={s.entityName ? 'Authorized Signer' : 'Primary Borrower'}
+          person={p}
+          sub={s.entityName}
+          requestId={s.requestId}
+          idNumber={p.idNumber}
+          expires={p.idExpires}
+          expired={false}
+        />
         <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5 mt-6">
           <KV label="Address Line 1" value={p.address1} />
           <KV label="Address Line 2" value={p.address2 || '—'} />
@@ -488,23 +657,14 @@ function CoBorrowerDetails({ m }: { m: RequestModel }) {
   };
   return (
     <div id="co-details" tabIndex={-1} className="space-y-6 focus:outline-none">
-      <div className="customer-card">
-        <div className="flex items-center gap-3 md:pr-6 md:border-r border-[var(--cds-border-subtle-01)]">
-          <span className="customer-card__avatar" aria-hidden="true">{co.name.split(' ').map((x) => x[0]).join('').slice(0, 2)}</span>
-          <div>
-            <p className="t-label-01 text-[var(--cds-text-secondary)]">Co-Borrower</p>
-            <p className="t-heading-02">{co.name}</p>
-          </div>
-        </div>
-        <dl className="customer-card__ids grid grid-cols-2 2xl:grid-cols-3 gap-x-6 gap-y-3 flex-1 min-w-0 basis-full md:basis-0">
-          <KV label="DOB" value={co.dob} mono />
-          <KV label="SSN" value={<MaskedId person={co} requestId={s.requestId} />} />
-          <KV label="MDM ID" value={co.mdmId} mono />
-          <KV label="Power ID" value={co.powerId} mono />
-          <KV label="Phone" value={co.phone} />
-          <KV label="Email" value={co.email} />
-        </dl>
-      </div>
+      <IdCard
+        role="Co-Borrower"
+        person={co}
+        requestId={s.requestId}
+        idNumber={req.coIdUpdate.saved ? req.coIdUpdate.number : co.idNumber}
+        expires={req.coIdUpdate.saved ? req.coIdUpdate.expires : co.idExpires}
+        expired={coIdExpired}
+      />
       <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-5">
         <KV label="Proof of Identity" value={co.idType} />
         <KV label="ID Number" value={req.coIdUpdate.saved ? req.coIdUpdate.number : co.idNumber} mono />
@@ -631,7 +791,7 @@ function LoanStep({ m }: { m: RequestModel }) {
 }
 
 /* --------------------------------- 4. Collaterals --------------------------------- */
-function CollateralStep({ m, onGo, onSubmitted, attempted, setAttempted }: { m: RequestModel; onGo: (p: Place, a?: string) => void; onSubmitted: () => void; attempted: boolean; setAttempted: (b: boolean) => void }) {
+function CollateralStep({ m, onGo, items, onGoItem, onSubmitted }: { m: RequestModel; onGo: (p: Place, a?: string) => void; items: Item[]; onGoItem: (i: Item) => void; onSubmitted: () => void }) {
   const { s, req, ev, changeEstimate, readiness, setReq, role, log } = m;
   const { track, recordGaps } = useDemo();
   const { setGlobal } = useAudit();
@@ -642,41 +802,57 @@ function CollateralStep({ m, onGo, onSubmitted, attempted, setAttempted }: { m: 
   const [, setSubmittedMap] = usePersistentState<Record<string, boolean>>('after:submitted', () => ({}));
   const [expanded, setExpanded] = useState<string[]>([]);
   const [confirm, setConfirm] = useState(false);
-  const open = readiness.filter((r) => !r.done).sort((a, b) => PLACE_ORDER.indexOf(a.step) - PLACE_ORDER.indexOf(b.step));
+  const open = items;
+  const resubmit = req.status === 'returned';
   const selectable = ev.rows.filter((r) => r.status !== 'ineligible');
   const allSelected = selectable.every((r) => r.pledged);
   const selected = ev.rows.filter((r) => r.pledged).length;
   // The owner line earns its place only when accounts belong to different parties (joint, trust).
   const mixedOwners = new Set(ev.rows.map((r) => `${r.account.owner} · ${r.account.relationship}`)).size > 1;
-  const locked = req.status !== 'draft';
+  const locked = LOCKED_STATUSES.includes(req.status);
   const toggleAll = () => {
     const next = { ...req.pledged };
     selectable.forEach((r) => { next[r.account.id] = !allSelected; });
     changeEstimate({ pledged: next }, allSelected ? 'Deselected all collaterals' : 'Selected all collaterals');
   };
   const trySubmit = () => {
-    setAttempted(true);
     if (open.length) { track('error', 'after'); focusAnchor('submit-blockers'); return; }
     setConfirm(true);
   };
   const submit = () => {
     recordGaps('after', 0);
-    log('Submitted to underwriting', `Requested ${fmtMoney(req.requested)}; total maximum borrowing power ${fmtMoney(ev.total)}`, s.requestId);
-    setReq((p) => ({ ...p, status: 'submitted', submittedAt: nowStamp(), completed: [...new Set([...(p.completed ?? []), 'collateral' as Section])] }));
+    const at = nowStamp();
+    const event = resubmit ? 'Resubmitted to underwriting' : 'Submitted to underwriting';
+    const detail = `Requested ${fmtMoney(req.requested)}; total maximum borrowing power ${fmtMoney(ev.total)}`;
+    log(event, detail, s.requestId);
+    setReq((p) => ({
+      ...p,
+      status: 'submitted',
+      uwStage: 'awaiting',
+      submittedAt: at,
+      corrections: [],
+      snapshot: { at, requested: p.requested, power: ev.total, pledged: selected, repay1: p.repay1, wealth1: p.wealth1, costCenter: p.costCenter },
+      history: [...(p.history ?? []), { at, event, detail, by: 'S. Mitchell · Loan Officer' }],
+      completed: [...new Set([...(p.completed ?? []), 'collateral' as Section])],
+    }));
     setSubmittedMap((p) => ({ ...p, [s.id]: true }));
     setConfirm(false);
     onSubmitted();
   };
   return (
     <>
-      {attempted && open.length > 0 && (
+      {!locked && open.length > 0 && (
         <div id="submit-blockers" tabIndex={-1} className="mb-6 focus:outline-none">
-          <InlineNotification kind="error" lowContrast hideCloseButton className="!max-w-none" title={`${open.length} item${open.length > 1 ? 's' : ''} must be completed before you submit`} subtitle="Select an item to go to where it is completed." />
+          <h2 className="t-heading-compact-01">Before you can submit: {open.length} item{open.length > 1 ? 's' : ''}</h2>
           <ul className="mt-2 border-t border-[var(--cds-border-subtle-01)]">
             {open.map((r) => (
               <li key={r.id} className="flex items-center gap-4 py-2 border-b border-[var(--cds-border-subtle-01)] t-body-01">
-                <span className="flex-1">{r.label}<span className="t-helper-01 text-[var(--cds-text-secondary)] ml-2">{PLACE_LABEL[r.step]}</span></span>
-                <Button kind="ghost" size="sm" onClick={() => onGo(r.step, ANCHOR[r.id])} aria-label={`Go to: ${r.label}`}>Go to</Button>
+                <span className="flex-1">
+                  {r.kind === 'correction' && <span className="mr-2 align-middle"><Tag tone="warning">Action required</Tag></span>}
+                  {r.kind === 'waiting' && <span className="mr-2 align-middle"><Tag tone="pending">Waiting</Tag></span>}
+                  {r.label}<span className="t-helper-01 text-[var(--cds-text-secondary)] ml-2">{PLACE_LABEL[r.place]}</span>
+                </span>
+                {r.kind !== 'waiting' && <Button kind="ghost" size="sm" onClick={() => onGoItem(r)} aria-label={`Go to: ${r.label}`}>Go to</Button>}
               </li>
             ))}
           </ul>
@@ -759,14 +935,17 @@ function CollateralStep({ m, onGo, onSubmitted, attempted, setAttempted }: { m: 
       <footer className="step-footer">
         <Button kind="ghost" size="md" onClick={() => onGo('loan')}>Back</Button>
         <div className="flex items-center gap-4">
-          <p className="t-helper-01 text-[var(--cds-text-secondary)]" aria-live="polite">{selected} of {ev.rows.length}<span className="hidden sm:inline"> collaterals</span> selected</p>
-          {!locked && role === 'Relationship Banker' && <Button id="submit-request" size="md" onClick={trySubmit}>Submit</Button>}
+          <p id="submit-help" className="t-helper-01 text-[var(--cds-text-secondary)] max-w-xs text-right" aria-live="polite">
+            {selected} of {ev.rows.length}<span className="hidden sm:inline"> collaterals</span> selected.{' '}
+            {!locked && (open.length ? <>Submit is available when the {open.length} item{open.length > 1 ? 's' : ''} above {open.length > 1 ? 'are' : 'is'} complete.</> : 'Every readiness check is complete.')}
+          </p>
+          {!locked && role === 'Relationship Banker' && <Button id="submit-request" size="md" onClick={trySubmit} disabled={open.length > 0} aria-describedby="submit-help">{resubmit ? 'Resubmit' : 'Submit'}</Button>}
           {!locked && role === 'Credit Officer' && <p className="t-helper-01 text-[var(--cds-text-secondary)]">The loan officer submits this request.</p>}
           {/* PAUL-F1: the same role hand-back as Evaluation, so the Credit Officer path never ends without a next action. */}
           {!locked && role === 'Credit Officer' && <Button kind="tertiary" size="md" onClick={switchToLoanOfficer}>Switch to Loan Officer</Button>}
         </div>
       </footer>
-      <Modal open={confirm} size="sm" modalHeading="Submit loan request to underwriting?" primaryButtonText="Submit" secondaryButtonText="Cancel" onRequestSubmit={submit} onRequestClose={() => setConfirm(false)}>
+      <Modal open={confirm} size="sm" modalHeading={resubmit ? "Resubmit loan request to underwriting?" : "Submit loan request to underwriting?"} primaryButtonText={resubmit ? "Resubmit" : "Submit"} secondaryButtonText="Cancel" onRequestSubmit={submit} onRequestClose={() => setConfirm(false)}>
         <dl className="grid grid-cols-2 gap-4 mb-4">
           <KV label="Application" value={`${s.requestId}, ${s.entityName ?? s.primary.name}`} />
           <KV label="Requested Loan Amount" value={fmtMoney(req.requested)} mono />

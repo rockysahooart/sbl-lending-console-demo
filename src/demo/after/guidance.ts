@@ -52,7 +52,7 @@ export const ANCHOR: Record<string, string> = {
   attest: 'acknowledgment',
 };
 
-const ACTION: Record<string, string> = {
+export const ACTION: Record<string, string> = {
   pep: 'Complete additional information', questions: 'Complete additional information',
   co: 'Add the co-borrower', coid: 'Update co-borrower ID', perm: 'Confirm application type', consent: 'Confirm application type', copep: 'Complete co-borrower information',
   pledge: 'Select collaterals', review: 'Complete manual evaluation', coverage: 'Confirm requested loan amount',

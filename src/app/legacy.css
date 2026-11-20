@@ -1,0 +1,126 @@
+/*
+ * BEFORE · legacy enterprise skin.
+ * Represents the pre-redesign origination system as it looked: a mid-2000s internal web app with
+ * compact system fonts, beveled controls, gray grid tables, a navy title bar, boxed panels, tight and
+ * uneven spacing, and every button at the same visual weight. Scoped to .sbl-legacy so After is untouched.
+ * Function is unchanged: only presentation (plus the legacy fields added in the components).
+ */
+.sbl-legacy {
+  --lg-face: #d4d0c8;      /* control face */
+  --lg-canvas: #ece9d8;    /* window background */
+  --lg-navy: #1f3a68;      /* title bars */
+  --lg-navy-2: #2d5190;
+  --lg-link: #0033a0;
+  --lg-edge: #808080;
+  --lg-grid: #b8b8b8;
+  --lg-input: #7f9db9;
+  font-family: Tahoma, Verdana, 'Segoe UI', Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.3;
+  color: #000;
+  background: var(--lg-canvas);
+}
+.sbl-legacy *:not([type='radio']) { border-radius: 0 !important; box-shadow: none !important; transition: none !important; letter-spacing: normal !important; }
+.sbl-legacy *:not(svg):not(path) { font-family: inherit; }
+
+/* Type: compact, little hierarchy between levels. */
+.sbl-legacy [class*='text-3xl'], .sbl-legacy [class*='text-2xl'] { font-size: 14px !important; line-height: 1.3 !important; font-weight: 700 !important; }
+.sbl-legacy [class*='text-xl'], .sbl-legacy [class*='text-lg'] { font-size: 12px !important; line-height: 1.3 !important; font-weight: 700 !important; }
+.sbl-legacy [class*='text-base'], .sbl-legacy [class*='text-sm'] { font-size: 11px !important; line-height: 1.35 !important; }
+.sbl-legacy [class*='text-xs'], .sbl-legacy [class*='text-[10px]'], .sbl-legacy [class*='text-[11px]'] { font-size: 11px !important; }
+.sbl-legacy .uppercase { text-transform: none !important; }
+.sbl-legacy [class*='font-semibold'], .sbl-legacy [class*='font-medium'] { font-weight: 700 !important; }
+.sbl-legacy [class*='text-gray-'] { color: #333 !important; }
+.sbl-legacy [class*='text-gray-4'], .sbl-legacy [class*='text-gray-5'] { color: #555 !important; }
+
+/* Spacing: tight and slightly uneven, as in hand-built table layouts. */
+.sbl-legacy [class*='px-8'], .sbl-legacy [class*='px-6'] { padding-left: 8px !important; padding-right: 8px !important; }
+.sbl-legacy [class*='px-4'] { padding-left: 5px !important; padding-right: 5px !important; }
+.sbl-legacy [class*='py-6'], .sbl-legacy [class*='pt-6'] { padding-top: 6px !important; }
+.sbl-legacy [class*='py-6'], .sbl-legacy [class*='pb-6'] { padding-bottom: 6px !important; }
+.sbl-legacy [class*='py-4'], .sbl-legacy [class*='py-3'] { padding-top: 3px !important; padding-bottom: 3px !important; }
+.sbl-legacy [class~='p-6'], .sbl-legacy [class~='p-4'], .sbl-legacy [class~='p-5'] { padding: 6px !important; }
+.sbl-legacy [class*='mb-8'], .sbl-legacy [class*='mb-6'] { margin-bottom: 8px !important; }
+.sbl-legacy [class*='mt-8'], .sbl-legacy [class*='mt-6'] { margin-top: 8px !important; }
+.sbl-legacy [class*='gap-8'], .sbl-legacy [class*='gap-6'] { gap: 6px 10px !important; }
+.sbl-legacy [class*='space-y-6'] > * + *, .sbl-legacy [class*='space-y-8'] > * + * { margin-top: 8px !important; }
+.sbl-legacy [class*='max-w-[1584px]'], .sbl-legacy [class*='max-w-[1648px]'] { max-width: none !important; width: 100% !important; }
+
+/* Surfaces: navy title bar, gray window, boxed white panels. */
+.sbl-legacy [class*='bg-[#0066CC]']:not(button) { background: linear-gradient(#2d5190, #1f3a68) !important; }
+.sbl-legacy header { background: linear-gradient(#f4f3ee, #d8d4c4) !important; border-bottom: 2px solid var(--lg-navy) !important; color: #000 !important; min-height: 0 !important; }
+.sbl-legacy header * { color: #000 !important; }
+.sbl-legacy .bg-white { background: #fff !important; }
+.sbl-legacy [class*='bg-gray-50'], .sbl-legacy [class*='bg-gray-100'] { background: #f2f1ea !important; }
+.sbl-legacy [class*='rounded-t-lg'] { border: 1px solid var(--lg-edge) !important; }
+.sbl-legacy [class*='border-gray-'] { border-color: var(--lg-grid) !important; }
+.sbl-legacy section, .sbl-legacy fieldset { border-color: var(--lg-grid); }
+.sbl-legacy h3 { background: linear-gradient(#e9eef7, #cfd9ea); border: 1px solid #9aaccc; padding: 2px 5px !important; margin-bottom: 4px !important; color: #102a56 !important; font-size: 11px !important; }
+
+/* Links: classic underlined blue. */
+.sbl-legacy a, .sbl-legacy button[class*='hover:underline'] { color: var(--lg-link) !important; text-decoration: underline; }
+
+/* Buttons: every action is the same beveled gray button — no primary/secondary distinction. */
+.sbl-legacy button:not([role='tab']):not([class*='hover:underline']):not([role='checkbox']):not([role='switch']):not(.lg-plain),
+.sbl-legacy input[type='button'], .sbl-legacy input[type='submit'] {
+  background: linear-gradient(#ffffff, #e3e1d9 60%, #d4d0c8) !important;
+  border: 1px solid #6f6f6f !important;
+  border-top-color: #b5b5b5 !important; border-left-color: #b5b5b5 !important;
+  color: #000 !important;
+  font-size: 11px !important; font-weight: 400 !important;
+  padding: 2px 9px !important; min-height: 21px; height: auto !important; line-height: 1.2 !important;
+  text-decoration: none !important;
+}
+.sbl-legacy button:not([role='tab']):disabled { color: #8a8a8a !important; background: #e6e4dc !important; }
+.sbl-legacy button:not([role='tab']):hover:not(:disabled) { background: linear-gradient(#fffbe8, #f0e2b6) !important; }
+.sbl-legacy button svg { width: 12px !important; height: 12px !important; }
+.sbl-legacy :focus-visible { outline: 2px dotted #000 !important; outline-offset: 2px !important; }
+.sbl-legacy [class*='text-[#0066CC]']:not(a):not(button) { color: #102a56 !important; }
+
+/* Form controls: thin blue-gray boxes, small. */
+.sbl-legacy input:not([type='checkbox']):not([type='radio']), .sbl-legacy select, .sbl-legacy textarea {
+  border: 1px solid var(--lg-input) !important; background-color: #fff !important;
+  font-size: 11px !important; padding-top: 1px !important; padding-bottom: 1px !important; padding-right: 3px !important; min-height: 20px; height: auto !important;
+}
+.sbl-legacy input:disabled, .sbl-legacy input[readonly], .sbl-legacy select:disabled { background: #ece9d8 !important; color: #333 !important; }
+.sbl-legacy label { font-size: 11px !important; margin-bottom: 1px !important; color: #000 !important; }
+.sbl-legacy input[type='checkbox'], .sbl-legacy input[type='radio'] { accent-color: #2d5190; }
+
+/* Tables: gray gradient headers, full grid, zebra rows. */
+.sbl-legacy table { border-collapse: collapse !important; border: 1px solid var(--lg-edge) !important; }
+.sbl-legacy th { background: linear-gradient(#fbfbfb, #dedbd2) !important; border: 1px solid var(--lg-grid) !important; padding: 2px 4px !important; font-size: 11px !important; font-weight: 700 !important; color: #000 !important; white-space: nowrap; }
+.sbl-legacy td { border: 1px solid #d0d0d0 !important; padding: 2px 4px !important; font-size: 11px !important; vertical-align: top; }
+.sbl-legacy tbody tr:nth-child(even) > td { background-color: #f4f4f0; }
+.sbl-legacy tbody tr:hover > td { background-color: #fff8d0 !important; }
+/* Status pills lose colour: plain text in the cell. */
+.sbl-legacy td span[class*='rounded'][class*='border'] { background: none !important; border: 0 !important; padding: 0 !important; color: #000 !important; font-weight: 400 !important; }
+
+/* Tabs: raised tab strip. */
+.sbl-legacy [role='tablist'] { gap: 2px !important; border-bottom: 1px solid var(--lg-edge); }
+.sbl-legacy [role='tab'] {
+  background: linear-gradient(#fbfbf9, #dcd9cf) !important; border: 1px solid var(--lg-edge) !important; border-bottom: 0 !important;
+  padding: 3px 10px !important; margin-bottom: -1px !important; font-size: 11px !important; color: #000 !important;
+}
+.sbl-legacy [role='tab'][aria-selected='true'] { background: #fff !important; font-weight: 700; position: relative; top: 1px; }
+.sbl-legacy [role='tab'] * { color: #000 !important; }
+
+/* Dialogs: window chrome. */
+.sbl-legacy [role='dialog'] { border: 2px solid var(--lg-navy) !important; background: var(--lg-canvas) !important; }
+.sbl-legacy [role='dialog'] h2:first-of-type { color: #000 !important; }
+
+/* Legacy-only elements added in the components. */
+.sbl-legacy .lg-sysbar { background: linear-gradient(#2d5190, #1f3a68); color: #fff; font-size: 11px; padding: 2px 6px; display: flex; justify-content: space-between; gap: 12px; }
+.sbl-legacy .lg-sysbar * { color: #fff !important; }
+.sbl-legacy .lg-summary { border: 1px solid var(--lg-grid); background: #fffff0; margin: 4px 8px; }
+.sbl-legacy .lg-summary table { width: 100%; border: 0 !important; }
+.sbl-legacy .lg-summary td { border: 1px solid #e0dccb !important; background: #fffff0 !important; }
+.sbl-legacy .lg-summary td.k { font-weight: 700; width: 1%; white-space: nowrap; background: #f3efd8 !important; }
+.sbl-legacy .lg-footer-msg { font-size: 11px; color: #333; }
+.sbl-legacy .lg-code { font-family: 'Courier New', monospace !important; font-size: 11px; }
+
+.sbl-legacy input:not([class*='pl-']) { padding-left: 3px !important; }
+.sbl-legacy input[class*='pl-'] { padding-left: 28px !important; }
+
+/* Link-style buttons keep a 24px target (WCAG 2.5.8) despite the compact type. */
+.sbl-legacy button[class*='hover:underline'] { min-height: 24px; min-width: 24px; }
+.sbl-legacy [role='dialog'] label:has(input[type='checkbox']) { padding-block: 4px !important; }

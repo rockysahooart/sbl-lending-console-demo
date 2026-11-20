@@ -289,3 +289,10 @@ What remains is Rocky's to decide (section 4). Two items should be decided befor
 - E-1, the page title.
 
 E-20 matters for the integrity of the segregation-of-duties story.
+
+
+## Before legacy re-skin (Rocky's direction, 11/20)
+
+- Before is now presented as the dated legacy system: `src/app/legacy.css` (scoped to `.sbl-legacy`), plain step tabs, an Application header repeated on each step, a Save / Print / Next footer, an underwriter memo and banker comments in the decision dialog, and Officer / Br columns on the dashboard.
+- Behaviour, data and the Before/After mapping are unchanged. The earlier "Before pixel-identical" results describe the build before this change.
+- Paul's review: removed invented system identity (env/region, screen code) and the invented status-code column; static blue text no longer looks like a link; one fictional date format; Cancel removed (it duplicated Back); the memo's conditions are answerable in Banker Comments; focus ring is 2px.

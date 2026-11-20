@@ -62,9 +62,10 @@ decision or an offer of credit.” or equivalent approved text.
 
 ## 4. Status vocabulary
 
-Request (Console and Pending Review; Before's status names, kept): Pending Review · Under Evaluation · Application In Progress · Underwriting In Progress · Condition Requested · Pending Credit Committee · Underwriting Review Complete · Declined.
-Final Decision column (Pending Review): Pending · Approved · Declined.
-Step progress: Not started · In progress · Completed, or the number of open items.
+Application lifecycle (Console, Pending Review, Active Credit, request header; one model in `src/demo/after/lifecycle.ts`): Not Started · In Progress · Action Required · Ready to Submit · Submitted · Under Review · Approved · Declined · Completed. Each is shown as a tag (colour + icon + words) with a short reason in sentence case, for example "Expired co-borrower ID", "Collateral shortfall", "Additional information requested", "Returned for correction", "Awaiting underwriting", "Pending credit committee", "Documents pending signature", "Line active".
+Next actions name the task, never "Review application": Start Application · Continue the evaluation item by name · Update co-borrower ID · Resolve the shortfall · Complete manual evaluation · Certify beneficial ownership · Submit Application · Resubmit Application · Respond to condition · View underwriting status · View decision · View credit line.
+Final Decision column (Pending Review): Pending · Approved · Declined · Booked.
+Step progress: Not started · In progress · Completed, the number of open items, or "Complete <step> first" when a step is not yet available.
 Collateral: Auto evaluated · Manual evaluation · Manually evaluated · Not eligible · Not selected.
 Documents: Pending signature · Outstanding · Complete.
 Monitoring: Within limits · LTV alert · Alert acknowledged.

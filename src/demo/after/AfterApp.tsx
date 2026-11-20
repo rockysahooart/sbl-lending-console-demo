@@ -11,6 +11,8 @@ import './team/kenji.scss';
 import './team/mara.scss';
 import './team/felix.scss';
 import './team/paul.scss';
+import './surfaces.scss';
+import './features.scss';
 import { Header, HeaderGlobalAction, HeaderGlobalBar, HeaderMenuButton, HeaderName, HeaderPanel, Modal, Select, SelectItem, SideNav, SideNavItems, SideNavLink, SkipToContent, Button } from '@carbon/react';
 import { UserAvatar } from '@carbon/icons-react';
 import { useDemo, type Stage } from '../DemoContext';
@@ -30,11 +32,11 @@ import { useConsoleStore } from '../../app/state/ConsoleStore';
 export type ConsoleTab = 'pending' | 'evaluations' | 'submitted';
 export type Route =
   | { page: 'console'; tab?: ConsoleTab; expanded?: string }
-  | { page: 'evaluation'; id: ScenarioId; ack?: boolean }
-  | { page: 'record'; id: string }
-  | { page: 'request'; id: ScenarioId; section: Section }
+  | { page: 'evaluation'; id: ScenarioId; ack?: boolean; fix?: string }
+  | { page: 'record'; id: string; fix?: string }
+  | { page: 'request'; id: ScenarioId; section: Section; fix?: string }
   | { page: 'confirmation'; id: ScenarioId }
-  | { page: 'review'; id?: string }
+  | { page: 'review'; id?: string; fix?: string }
   | { page: 'credit'; id?: string };
 
 const SECTION_STAGE: Record<Section, Stage> = { customer: 'customer', parties: 'parties', loan: 'loan', collateral: 'collateral' };
@@ -184,6 +186,29 @@ function AfterInner() {
       focusPageHeading();
     });
   }, [scrollKey, signedOut]);
+  // WCAG 2.4.11 (round 2): keyboard focus must never land under the sticky step footer. The footer's height varies
+  // (the reason a step is blocked wraps on phones), so it is measured and given to <main> as its bottom scroll padding,
+  // which the browser honours when it scrolls a focused control into view.
+  useEffect(() => {
+    const main = document.getElementById('after-main');
+    if (!main || typeof ResizeObserver === 'undefined') return;
+    let observed: Element | null = null;
+    const ro = new ResizeObserver(() => {
+      const h = observed ? Math.ceil(observed.getBoundingClientRect().height) : 0;
+      main.style.setProperty('--sbl-footer-h', `${h}px`);
+    });
+    const attach = () => {
+      const f = main.querySelector('.step-footer');
+      if (f === observed) return;
+      if (observed) ro.unobserve(observed);
+      observed = f;
+      if (f) ro.observe(f); else main.style.setProperty('--sbl-footer-h', '0px');
+    };
+    attach();
+    const mo = new MutationObserver(attach);
+    mo.observe(main, { childList: true, subtree: true });
+    return () => { ro.disconnect(); mo.disconnect(); };
+  }, [signedOut]);
   // Browser tab title follows the screen (FELIX-04); the previous title is restored when After unmounts.
   useEffect(() => {
     const prev = document.title;
@@ -282,10 +307,10 @@ function AfterInner() {
         {route.page === 'console' && <h1 className="sr-only">Securities Lending Console</h1>}
         {route.page === 'evaluation' && <h1 className="sr-only">Evaluation · {reqId(route.id)}</h1>}
         {route.page === 'console' && <Console key={`c${jumpKey}`} tab={route.tab ?? 'pending'} expanded={route.expanded} onRoute={setRoute} />}
-        {route.page === 'record' && <Record key={route.id} id={route.id} onRoute={setRoute} />}
-        {route.page === 'evaluation' && <Evaluation key={`${route.id}-${jumpKey}`} id={route.id} ack={!!route.ack} onAck={(a) => setRoute({ page: 'evaluation', id: route.id, ack: a })} onRoute={setRoute} />}
+        {route.page === 'record' && <Record key={`${route.id}-${route.fix ?? ''}`} id={route.id} fix={route.fix} onRoute={setRoute} />}
+        {route.page === 'evaluation' && <Evaluation key={`${route.id}-${jumpKey}-${route.fix ?? ''}`} id={route.id} fix={route.fix} ack={!!route.ack} onAck={(a) => setRoute({ page: 'evaluation', id: route.id, ack: a })} onRoute={setRoute} />}
         {(route.page === 'request' || route.page === 'confirmation') && <Workspace key={route.id} route={route} onRoute={setRoute} />}
-        {route.page === 'review' && <Underwriting key={`u${jumpKey}`} focusId={route.id} onSelect={(id) => setRoute({ page: 'review', id })} onRoute={setRoute} />}
+        {route.page === 'review' && <Underwriting key={`u${jumpKey}`} focusId={route.id} fix={route.fix} onSelect={(id) => setRoute({ page: 'review', id })} onRoute={setRoute} />}
         {route.page === 'credit' && <ActiveCredit key={`a${jumpKey}`} focusId={route.id} onSelect={(id) => setRoute({ page: 'credit', id })} onRoute={setRoute} />}
       </main>
       <SessionGuard onExpire={() => signOut('Session timed out after inactivity')} />

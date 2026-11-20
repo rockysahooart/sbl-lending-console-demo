@@ -404,6 +404,8 @@ export function LoanTable({ onMenuClick, initialView }: LoanTableProps = {}) {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Last Updated
                     </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Officer</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Br</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Actions
                     </th>
@@ -465,6 +467,8 @@ export function LoanTable({ onMenuClick, initialView }: LoanTableProps = {}) {
                       <td className="px-4 py-4 text-sm text-gray-600">
                         {loan.lastUpdated}
                       </td>
+                      <td>SMITCHELL</td>
+                      <td className="lg-code">4472</td>
                       <td className="px-6 py-4">
                         <button
                           type="button"
@@ -487,7 +491,7 @@ export function LoanTable({ onMenuClick, initialView }: LoanTableProps = {}) {
                     /* Expanded Row Details */
                     expandedRow === loan.id && (
                       <tr key={`${loan.id}-expanded`} id={`loan-details-${loan.id}`} className="bg-gray-50">
-                        <td colSpan={8} className="px-6 py-6">
+                        <td colSpan={10} className="px-6 py-6">
                           <div className="bg-white rounded-md border border-gray-200 p-6">
                             {/* Main Details Grid */}
                             <div className="grid grid-cols-6 gap-6 mb-6">
@@ -616,7 +620,7 @@ export function LoanTable({ onMenuClick, initialView }: LoanTableProps = {}) {
                   ])}
                   {currentData.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-6 py-12 text-center">
+                      <td colSpan={10} className="px-6 py-12 text-center">
                         <div className="text-sm font-medium text-gray-900 mb-1">No applications match the current search or filter</div>
                         <button
                           type="button"

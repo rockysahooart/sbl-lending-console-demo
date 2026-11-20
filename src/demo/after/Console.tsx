@@ -25,11 +25,14 @@ import {
 import { ArrowRight, ArrowsVertical, CheckmarkFilled, Filter, Warning } from '@carbon/icons-react';
 import { BASELINE_PENDING, BASELINE_SUBMITTED } from '../beforeData';
 import { ACTIVE_LINES, fmtMoney, fmtPct, type ScenarioId } from '../data';
-import { useAfterRequest } from './state';
+import { useAfterGlobal, useAfterRequest } from './state';
+import { appState, refState, submittedRefState, STATUS_ORDER, type AppState, type Queue, type Status } from './lifecycle';
 import { useDemo } from '../DemoContext';
 import { guidance } from './guidance';
-import { PENDING_REFS, SUBMITTED_REFS, refPower, type AppType } from './records';
-import { KV, Tag, cx, type Tone } from './ui';
+import { PENDING_REFS, RETURNED_REF, SUBMITTED_REFS, refPower, type AppType } from './records';
+import { KV, StatusTag, Tag, cx, type Tone } from './ui';
+import { ActiveFilters, ColHeader, useColumns, type Col } from './columns';
+import { ActionCell } from './columns';
 import type { ConsoleTab, Route } from './AfterApp';
 
 /*
@@ -64,7 +67,10 @@ interface Row {
   primaryApplicant: string;
   type: AppType;
   loanType: string;
-  status: string;
+  status: Status;
+  detail: string;
+  why: string;
+  queue: Queue;
   lastUpdated: string;
   details: { label: string; value: ReactNode }[];
   exceptions: string[];
@@ -83,27 +89,34 @@ const TABS: { key: ConsoleTab; label: string }[] = [
   { key: 'submitted', label: 'Submitted Applications' },
 ];
 
+/** Statuses where the next action belongs to the loan officer: the row action is emphasised. */
+const OWNED: Status[] = ['Not Started', 'In Progress', 'Action Required', 'Ready to Submit'];
+
 const money = (n: number, short = false) => <span className={cx('font-semibold tabular-nums', short && 'text-[var(--cds-text-error)]')}>{fmtMoney(n)}</span>;
 
 export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?: string; onRoute: (r: Route) => void }) {
   // Fixed order of hook calls (three scenarios).
   const models = (['single', 'joint', 'complex'] as ScenarioId[]).map((id) => useAfterRequest(id));
   const { scenario } = useDemo();
+  const [global] = useAfterGlobal();
+  const STEP_NAME: Record<string, string> = { customer: 'Customer Information', parties: 'Co-borrowers', loan: 'Loan Information', collateral: 'Collaterals', evaluation: 'Evaluation', acknowledgment: 'Acknowledgment' };
+  // Every row's status, queue, open items and next action come from lifecycle.ts.
+  const fromState = (st: AppState) => ({
+    status: st.status,
+    detail: st.detail,
+    why: st.why,
+    queue: st.queue,
+    exceptions: [...new Set(st.items.filter((i) => i.kind === 'correction').map((i) => i.problem ?? i.label))],
+    openItems: st.inUnderwriting || st.status === 'Declined' || st.status === 'Completed' ? null : st.items.map((i) => ({ step: STEP_NAME[i.place] ?? i.place, label: i.label })),
+    action: st.next ? { label: st.next.label, route: st.next.route } : { label: 'View', route: { page: 'console' } as Route },
+    open: st.next ? { label: st.next.label, route: st.next.route } : undefined,
+  });
 
   const scenarioRows: Row[] = models.map((m, i) => {
     const base = BASELINE_PENDING[i];
     const { s, req, ev } = m;
-    const started = m.acknowledged || req.visited.length > 0;
     const g = guidance(m);
-    const openCond = (req.conditions ?? []).filter((c) => c.status === 'open');
-    const status = req.status === 'approved' ? 'Underwriting Review Complete' : req.status === 'submitted' ? (openCond.length ? 'Condition Requested' : 'Underwriting In Progress') : started ? 'Application In Progress' : base.status;
-    const action: Row['action'] =
-      req.status !== 'draft'
-        ? { label: openCond.length ? 'Respond' : 'View', route: { page: 'review', id: s.requestId } }
-        : started
-          ? { label: 'Continue', route: { page: 'request', id: s.id, section: req.section } }
-          : { label: 'Evaluate', route: { page: 'evaluation', id: s.id } };
-    const stepName: Record<string, string> = { customer: 'Customer Information', parties: 'Co-borrowers', loan: 'Loan Information', collateral: 'Collaterals', evaluation: 'Evaluation', acknowledgment: 'Acknowledgment' };
+    const st = appState(m, global.signedLines.includes(s.requestId));
     return {
       key: s.id,
       applicationId: s.requestId,
@@ -112,8 +125,7 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
       primaryApplicant: base.primaryApplicant,
       type: req.appType === 'Entity' ? 'Entity' : req.appType,
       loanType: base.loanType,
-      status,
-      lastUpdated: req.submittedAt?.split(',')[0] ?? base.lastUpdated,
+      lastUpdated: (req.history ?? []).length ? req.history![req.history!.length - 1].at.split(',')[0] : base.lastUpdated,
       details: [
         { label: 'Opportunity Date', value: base.expandedDetails.opportunityDate },
         { label: 'Customer Power ID', value: base.expandedDetails.customerPowerId },
@@ -122,21 +134,20 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
         { label: 'Total Maximum Borrowing Power', value: money(ev.total, ev.total < req.requested) },
         { label: 'Coverage', value: <span className="tabular-nums">{fmtPct(g.coverage)}</span> },
       ],
-      exceptions: g.exceptions,
-      openItems: req.status === 'draft' ? m.readiness.filter((r) => !r.done).map((r) => ({ step: stepName[r.step], label: r.label })) : null,
-      note: openCond.length ? <p className="t-body-01"><span className="font-semibold">Underwriting requested {openCond.length} condition{openCond.length > 1 ? 's' : ''}:</span> {openCond[0].text}</p> : null,
+      ...fromState(st),
       history: [
-        ...(req.submittedAt ? [{ date: req.submittedAt.split(',')[0], action: 'Submitted to Underwriting', evaluator: 'S. Mitchell', notes: 'Application package submitted for underwriting review' }] : []),
+        ...[...(req.history ?? [])].reverse().map((h) => ({ date: h.at.split(',')[0], action: h.event, evaluator: h.by, notes: h.detail })),
         ...(base.expandedDetails.evaluationHistory ?? []),
       ],
-      action,
-      open: action,
       current: s.id === scenario,
     };
   });
 
-  const pendingRefs: Row[] = PENDING_REFS.map((r) => {
+  const resolved = global.resolvedRefItems ?? [];
+  const startedRefs = global.startedRefs ?? [];
+  const pendingRefs: Row[] = [...PENDING_REFS, RETURNED_REF].map((r) => {
     const power = refPower(r);
+    const st = refState(r, resolved, startedRefs);
     return {
       key: r.id,
       applicationId: r.id,
@@ -144,7 +155,6 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
       primaryApplicant: r.applicant,
       type: r.type,
       loanType: 'Securities-Based Line of Credit',
-      status: r.status,
       lastUpdated: r.lastUpdated,
       details: [
         { label: 'Opportunity Date', value: r.opportunityDate },
@@ -154,12 +164,8 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
         { label: 'Total Maximum Borrowing Power', value: money(power, power < r.requested) },
         { label: 'Coverage', value: <span className="tabular-nums">{fmtPct(power / r.requested)}</span> },
       ],
-      exceptions: r.exceptions,
-      openItems: r.openItems,
-      history: r.history,
-      // PAUL-01: reference records are read-only, so their action is always "Open"; "Evaluate" means interactive.
-      action: { label: 'Open', route: { page: 'record', id: r.id } },
-      open: { label: 'Open application', route: { page: 'record', id: r.id } },
+      ...fromState(st),
+      history: [...r.history].reverse(),
     };
   });
 
@@ -171,7 +177,6 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
       primaryApplicant: r.applicant,
       type: r.type,
       loanType: 'Securities-Based Line of Credit',
-      status: r.status,
       lastUpdated: r.submitted,
       details: [
         { label: 'Submitted', value: r.submitted },
@@ -181,15 +186,15 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
         { label: 'Total Maximum Borrowing Power', value: money(r.power, r.power < r.requested) },
         { label: 'Final Decision', value: r.decision === 'Approved' && r.approvedLimit ? `Approved · ${fmtMoney(r.approvedLimit)} limit` : r.decision },
       ],
-      exceptions: r.conditions.length ? ['Condition requested'] : [],
-      openItems: null,
-      note: <p className="t-body-01">{r.conditions.length ? <><span className="font-semibold">Condition:</span> {r.conditions[0]}</> : r.note}</p>,
+      ...fromState(submittedRefState(r)),
       history: [{ date: r.submitted, action: 'Submitted to Underwriting', evaluator: 'System', notes: r.note }],
-      action: { label: r.status === 'Condition Requested' ? 'Respond' : 'View', route: { page: 'review', id: r.id } },
-      open: { label: 'Open in Pending Review', route: { page: 'review', id: r.id } },
     })),
     ...BASELINE_SUBMITTED.map((b): Row => {
       const line = ACTIVE_LINES.find((l) => l.id === b.applicationId);
+      // Shared fictional data from the original console, placed by its real stage: booked lines are Completed.
+      const st: AppState = line
+        ? { status: 'Completed', detail: 'Line active', queue: 'submitted', inUnderwriting: false, items: [], why: 'Approved, documents signed, and the line is active.', next: { label: 'View credit line', route: { page: 'credit', id: line.id }, explain: '' } }
+        : { status: 'Under Review', detail: 'In credit underwriting', queue: 'submitted', inUnderwriting: true, items: [], why: 'Credit Underwriting is reviewing the request. Nothing is needed from you.', next: { label: 'View underwriting status', route: { page: 'review', id: b.applicationId }, explain: '' } };
       return {
         key: b.id,
         applicationId: b.applicationId,
@@ -197,7 +202,6 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
         primaryApplicant: b.primaryApplicant,
         type: 'Individual',
         loanType: b.loanType,
-        status: b.status,
         lastUpdated: b.lastUpdated,
         details: [
           { label: line ? 'Approved' : 'Opportunity Date', value: b.expandedDetails.opportunityDate },
@@ -205,22 +209,19 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
           { label: 'Loan Purpose', value: b.expandedDetails.loanPurpose },
           { label: line ? 'Credit Limit' : 'Loan Amount', value: <span className="font-semibold">{b.expandedDetails.loanAmount}</span> },
         ],
-        exceptions: [],
-        openItems: null,
+        ...fromState(st),
         history: b.expandedDetails.evaluationHistory ?? [],
-        action: { label: 'View', route: line ? { page: 'credit', id: line.id } : { page: 'review', id: b.applicationId } },
-        open: { label: line ? 'Open in Active Credit' : 'Open in Pending Review', route: line ? { page: 'credit', id: line.id } : { page: 'review', id: b.applicationId } },
       };
     }),
   ];
 
-  const submittedScenario = scenarioRows.filter((_, i) => models[i].req.status !== 'draft');
-  const draftScenario = scenarioRows.filter((_, i) => models[i].req.status === 'draft');
-  const rows = tab === 'submitted' ? [...submittedScenario, ...submittedRefs] : [...draftScenario, ...pendingRefs];
-  // Arriving with an expanded application that lives in the other queue (e.g. already submitted here): open that queue.
-  const other = tab === 'submitted' ? [...draftScenario, ...pendingRefs] : [...submittedScenario, ...submittedRefs];
+  // Each application appears in exactly one queue, decided by its lifecycle stage.
+  const all = [...scenarioRows, ...pendingRefs, ...submittedRefs];
+  const byQueue = (q: Queue) => all.filter((r) => r.queue === q);
+  const rows = byQueue(tab);
   useEffect(() => {
-    if (expanded && !rows.some((r) => r.applicationId === expanded) && other.some((r) => r.applicationId === expanded)) onRoute({ page: 'console', tab: tab === 'submitted' ? 'pending' : 'submitted', expanded });
+    const home = all.find((r) => r.applicationId === expanded);
+    if (expanded && home && home.queue !== tab) onRoute({ page: 'console', tab: home.queue, expanded });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -228,7 +229,7 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
       <section className="sbl-queue" aria-label="Loan requests">
         <Tabs selectedIndex={TABS.findIndex((t) => t.key === tab)} onChange={({ selectedIndex }: { selectedIndex: number }) => onRoute({ page: 'console', tab: TABS[selectedIndex].key })}>
           <TabList aria-label="Loan request queues" contained={false}>
-            {TABS.map((t) => <Tab key={t.key}>{t.label}</Tab>)}
+            {TABS.map((t) => <Tab key={t.key}>{t.label} <span className="tab-count" aria-label={`${byQueue(t.key).length} applications`}>{byQueue(t.key).length}</span></Tab>)}
           </TabList>
           <TabPanels>
             {TABS.map((t) => (
@@ -268,7 +269,7 @@ function QueueTable({ rows, onRoute, empty, initialExpanded, onExpandedChange }:
   const [pageSize, setPageSize] = useState(10);
   // The most recently expanded row is the one the Before/After toggle carries.
   const setExpanded = (next: string[]) => { setExpandedState(next); onExpandedChange(rows.find((r) => r.key === next[next.length - 1])?.applicationId); };
-  const allStatuses = [...new Set(rows.map((r) => r.status))];
+  const allStatuses = STATUS_ORDER.filter((st) => rows.some((r) => r.status === st));
   const allTypes = [...new Set(rows.map((r) => r.type))];
   const filters = statuses.length + types.length + (withExceptions ? 1 : 0);
 
@@ -289,10 +290,20 @@ function QueueTable({ rows, onRoute, empty, initialExpanded, onExpandedChange }:
     if (i >= 0) setPage(Math.floor(i / pageSize) + 1);
     requestAnimationFrame(() => document.querySelector('.queue-table tr.is-expanded')?.scrollIntoView({ block: 'center' }));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const pages = Math.max(1, Math.ceil(shown.length / pageSize));
+  const colsDef = useMemo<Col<Row>[]>(() => [
+    { key: 'id', label: 'Application ID', type: 'text', get: (r) => r.applicationId },
+    { key: 'business', label: 'Business Name', type: 'text', get: (r) => r.businessName },
+    { key: 'applicant', label: 'Primary Applicant', type: 'text', get: (r) => r.primaryApplicant },
+    { key: 'loan', label: 'Loan Type', type: 'enum', get: (r) => r.loanType },
+    { key: 'status', label: 'Status', type: 'enum', get: (r) => r.status },
+    { key: 'updated', label: 'Last Updated', type: 'date', get: (r) => r.lastUpdated },
+    { key: 'action', label: 'Actions', type: 'enum', get: (r) => r.action.label },
+  ], []);
+  const cols = useColumns(shown, colsDef, () => setPage(1));
+  const pages = Math.max(1, Math.ceil(cols.rows.length / pageSize));
   const cur = Math.min(page, pages);
-  const visible = shown.slice((cur - 1) * pageSize, cur * pageSize);
-  const reset = () => { setQ(''); setStatuses([]); setTypes([]); setWithExceptions(false); setPage(1); };
+  const visible = cols.rows.slice((cur - 1) * pageSize, cur * pageSize);
+  const reset = () => { setQ(''); setStatuses([]); setTypes([]); setWithExceptions(false); cols.clearAll(); setPage(1); };
   const toggle = (list: string[], set: (v: string[]) => void, v: string, on: boolean) => { set(on ? [...list, v] : list.filter((x) => x !== v)); setPage(1); };
 
   return (
@@ -326,18 +337,13 @@ function QueueTable({ rows, onRoute, empty, initialExpanded, onExpandedChange }:
           </div>
         )}
       </QueueToolbar>
+      <ActiveFilters st={cols} count={cols.rows.length} total={shown.length} noun="applications" />
       <div className="overflow-x-auto">
         <Table aria-label="Loan requests" size="lg" className="queue-table min-w-[960px]">
           <TableHead>
             <TableRow>
               <TableExpandHeader aria-label="Expand row" />
-              <TableHeader>Application ID</TableHeader>
-              <TableHeader>Business Name</TableHeader>
-              <TableHeader>Primary Applicant</TableHeader>
-              <TableHeader>Loan Type</TableHeader>
-              <TableHeader>Status</TableHeader>
-              <TableHeader>Last Updated</TableHeader>
-              <TableHeader>Actions</TableHeader>
+              {['id', 'business', 'applicant', 'loan', 'status', 'updated', 'action'].map((k) => <ColHeader key={k} st={cols} k={k} />)}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -371,10 +377,10 @@ function QueueTable({ rows, onRoute, empty, initialExpanded, onExpandedChange }:
                   <TableCell>{r.businessName}</TableCell>
                   <TableCell>{r.primaryApplicant}</TableCell>
                   <TableCell className="cell-secondary">{r.loanType}</TableCell>
-                  <TableCell><Tag tone={STATUS_TONE[r.status] ?? 'neutral'}>{r.status}</Tag></TableCell>
+                  <TableCell><StatusTag status={r.status} detail={r.detail} /></TableCell>
                   <TableCell className="cell-secondary tabular-nums">{r.lastUpdated}</TableCell>
                   <TableCell>
-                    <Button kind={r.action.label === 'Respond' ? 'tertiary' : 'ghost'} size="sm" onClick={() => onRoute(r.action.route)} aria-label={`${r.action.label} ${r.applicationId}`}>{r.action.label}</Button>
+                    <ActionCell status={r.status} label={r.action.label} id={r.applicationId} onClick={() => onRoute(r.action.route)} />
                   </TableCell>
                 </TableExpandRow>,
                 isOpen ? (
@@ -392,7 +398,7 @@ function QueueTable({ rows, onRoute, empty, initialExpanded, onExpandedChange }:
           page={cur}
           pageSize={pageSize}
           pageSizes={[10, 20, 50]}
-          totalItems={shown.length}
+          totalItems={cols.rows.length}
           itemsPerPageText="Applications per page"
           itemRangeText={(min: number, max: number, total: number) => `Showing ${min} to ${max} of ${total} applications`}
           pageRangeText={(_: number, total: number) => `of ${total} page${total === 1 ? '' : 's'}`}
@@ -408,6 +414,7 @@ function RowDetails({ row, onRoute }: { row: Row; onRoute: (r: Route) => void })
   const [history, setHistory] = useState(false);
   return (
     <div className="expanded-body">
+      <p className="t-body-01 mb-4"><span className="font-semibold">{row.status}{row.detail && row.detail !== row.status ? ` · ${row.detail}` : ''}.</span> {row.why}</p>
       <dl className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-x-8 gap-y-4">
         {row.details.map((d) => <KV key={d.label} label={d.label} value={d.value} />)}
       </dl>
@@ -441,7 +448,7 @@ function RowDetails({ row, onRoute }: { row: Row; onRoute: (r: Route) => void })
       )}
       {row.note && <div className="mt-4">{row.note}</div>}
       <div className="flex flex-wrap items-center gap-2 mt-4">
-        {row.open && <Button kind="tertiary" size="sm" renderIcon={ArrowRight} onClick={() => onRoute(row.open!.route)} aria-label={`${row.open.label}: ${row.applicationId}`}>{row.open.label}</Button>}
+        {row.open && <Button kind={OWNED.includes(row.status) ? 'primary' : 'tertiary'} size="sm" renderIcon={ArrowRight} onClick={() => onRoute(row.open!.route)} aria-label={`${row.open.label}: ${row.applicationId}`}>{row.open.label}</Button>}
         <Button kind="ghost" size="sm" aria-expanded={history} onClick={() => setHistory(!history)}>{history ? 'Hide history' : 'View history'}</Button>
       </div>
       {history && (

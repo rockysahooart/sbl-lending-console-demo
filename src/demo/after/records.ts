@@ -15,7 +15,12 @@ export interface PendingRef {
   business: string;
   applicant: string;
   type: AppType;
+  /** Legacy queue label (kept for history); the displayed status comes from lifecycle.ts. */
   status: 'Pending Review' | 'Under Evaluation' | 'Application In Progress';
+  /** How far the banker has got: nothing yet, evaluation only, or application started. */
+  progress: 'not-started' | 'evaluating' | 'started';
+  /** Returned by underwriting for correction: what was submitted and why it came back. */
+  returned?: { submittedAt: string; returnedAt: string; reason: string; previous: { label: string; value: string }[] };
   lastUpdated: string;
   opportunityDate: string;
   purpose: string;
@@ -26,7 +31,7 @@ export interface PendingRef {
   /** Conditions outside the standard path that someone must decide on. */
   exceptions: string[];
   /** Readiness items still open, worded as in the Application status panel. */
-  openItems: { step: string; label: string }[];
+  openItems: { step: string; label: string; explain?: string }[];
   history: { date: string; action: string; evaluator: string; notes: string }[];
 }
 
@@ -34,7 +39,7 @@ const c = (name: string, number: string, value: number, rate: number, status: Re
 
 export const PENDING_REFS: PendingRef[] = [
   {
-    id: 'SBL-24-10948', business: 'Corvin Ashby (Individual)', applicant: 'Corvin Ashby', type: 'Individual', status: 'Under Evaluation',
+    id: 'SBL-24-10948', business: 'Corvin Ashby (Individual)', applicant: 'Corvin Ashby', type: 'Individual', status: 'Under Evaluation', progress: 'evaluating',
     lastUpdated: '11/19/2025', opportunityDate: '11/10/2025', purpose: 'Business expansion', powerId: '3100-51902', officer: 'J. Whitfield', requested: 900000,
     collateral: [c('Brokerage — Core', '••••6631', 820000, 0.7), c('Bond Ladder', '••••6640', 240000, 0.8)],
     exceptions: ['Coverage shortfall'],
@@ -42,23 +47,23 @@ export const PENDING_REFS: PendingRef[] = [
     history: [{ date: '11/10/2025', action: 'Opportunity created', evaluator: 'J. Whitfield', notes: 'Individual request from relationship review' }, { date: '11/19/2025', action: 'Auto evaluation run', evaluator: 'System', notes: 'Total Maximum Borrowing Power $766,000; $134,000 short of the request' }],
   },
   {
-    id: 'SBL-24-10951', business: 'Rosalind Okeke (Joint)', applicant: 'Rosalind Okeke', type: 'Joint', status: 'Application In Progress',
+    id: 'SBL-24-10951', business: 'Rosalind Okeke (Joint)', applicant: 'Rosalind Okeke', type: 'Joint', status: 'Application In Progress', progress: 'started',
     lastUpdated: '11/18/2025', opportunityDate: '11/03/2025', purpose: 'Tuition and education', powerId: '3100-52017', officer: 'R. Castellano', requested: 300000,
     collateral: [c('Joint Brokerage', '••••7105', 410000, 0.7), c('Money Market', '••••7112', 95000, 0.8)],
     exceptions: ['Co-borrower ID expired'],
-    openItems: [{ step: 'Co-borrowers', label: 'Update Tobias Okeke’s identification (expired 08/31/2025)' }],
+    openItems: [{ step: 'Co-borrowers', label: 'Update Tobias Okeke’s identification (expired 08/31/2025)', explain: 'Tobias Okeke’s passport expired 08/31/2025. Record a current, unexpired government ID (number and expiration date) before submitting.' }],
     history: [{ date: '11/03/2025', action: 'Opportunity created', evaluator: 'R. Castellano', notes: 'Joint request with spouse' }, { date: '11/18/2025', action: 'Application started', evaluator: 'S. Mitchell', notes: 'Acknowledgment completed' }],
   },
   {
-    id: 'SBL-24-10955', business: 'Skerry Marine Supply LLC', applicant: 'Ingrid Solheim', type: 'Entity', status: 'Application In Progress',
+    id: 'SBL-24-10955', business: 'Skerry Marine Supply LLC', applicant: 'Ingrid Solheim', type: 'Entity', status: 'Application In Progress', progress: 'started',
     lastUpdated: '11/17/2025', opportunityDate: '10/30/2025', purpose: 'Working capital', powerId: '3100-52188', officer: 'J. Whitfield', requested: 1250000,
     collateral: [c('Corporate Brokerage', '••••8820', 1600000, 0.7), c('Treasury Account', '••••8836', 300000, 0.8)],
     exceptions: ['Beneficial-owner information missing'],
-    openItems: [{ step: 'Co-borrowers', label: 'Certify beneficial ownership (one 25% owner has no verification on file)' }, { step: 'Loan Information', label: 'Answer the sustainability review question' }],
+    openItems: [{ step: 'Co-borrowers', label: 'Certify beneficial ownership (one 25% owner has no verification on file)', explain: 'One owner of 25% or more has no identity verification on file. Verify that owner, then certify beneficial ownership.' }, { step: 'Loan Information', label: 'Answer the sustainability review question' }],
     history: [{ date: '10/30/2025', action: 'Opportunity created', evaluator: 'J. Whitfield', notes: 'Entity request; signer Ingrid Solheim' }],
   },
   {
-    id: 'SBL-24-10957', business: 'Mateo Villanueva (Individual)', applicant: 'Mateo Villanueva', type: 'Individual', status: 'Under Evaluation',
+    id: 'SBL-24-10957', business: 'Mateo Villanueva (Individual)', applicant: 'Mateo Villanueva', type: 'Individual', status: 'Under Evaluation', progress: 'evaluating',
     lastUpdated: '11/16/2025', opportunityDate: '11/06/2025', purpose: 'Real estate down payment', powerId: '3100-52240', officer: 'A. Brennan', requested: 650000,
     collateral: [c('Concentrated Position — single issuer', '••••9014', 980000, 0.35, 'Manual evaluation'), c('Brokerage — Balanced', '••••9021', 260000, 0.7)],
     exceptions: ['Concentration review needed'],
@@ -66,7 +71,7 @@ export const PENDING_REFS: PendingRef[] = [
     history: [{ date: '11/06/2025', action: 'Opportunity created', evaluator: 'A. Brennan', notes: 'Single-issuer position is 79% of selected market value' }],
   },
   {
-    id: 'SBL-24-10960', business: 'Delphine Moreau-Grant (Individual)', applicant: 'Delphine Moreau-Grant', type: 'Individual', status: 'Pending Review',
+    id: 'SBL-24-10960', business: 'Delphine Moreau-Grant (Individual)', applicant: 'Delphine Moreau-Grant', type: 'Individual', status: 'Pending Review', progress: 'evaluating',
     lastUpdated: '11/15/2025', opportunityDate: '11/12/2025', purpose: 'Liquidity reserve', powerId: '3100-52301', officer: 'R. Castellano', requested: 200000,
     collateral: [c('Brokerage — Growth', '••••3307', 240000, 0.7), c('Restricted Stock (Rule 144)', '••••3315', 410000, 0, 'Not eligible')],
     exceptions: ['1 ineligible account', 'Coverage shortfall'],
@@ -74,7 +79,7 @@ export const PENDING_REFS: PendingRef[] = [
     history: [{ date: '11/12/2025', action: 'Opportunity created', evaluator: 'R. Castellano', notes: 'Restricted stock excluded from evaluation' }],
   },
   {
-    id: 'SBL-24-10962', business: 'Anand Krishnaswamy (Individual)', applicant: 'Anand Krishnaswamy', type: 'Individual', status: 'Application In Progress',
+    id: 'SBL-24-10962', business: 'Anand Krishnaswamy (Individual)', applicant: 'Anand Krishnaswamy', type: 'Individual', status: 'Application In Progress', progress: 'started',
     lastUpdated: '11/19/2025', opportunityDate: '10/27/2025', purpose: 'Home renovation', powerId: '3100-52355', officer: 'S. Mitchell', requested: 350000,
     collateral: [c('Brokerage — Dividend', '••••4410', 380000, 0.7), c('Certificates of Deposit', '••••4428', 150000, 1)],
     exceptions: [],
@@ -82,7 +87,7 @@ export const PENDING_REFS: PendingRef[] = [
     history: [{ date: '10/27/2025', action: 'Opportunity created', evaluator: 'S. Mitchell', notes: 'Individual request' }, { date: '11/19/2025', action: 'All readiness checks complete', evaluator: 'S. Mitchell', notes: 'Ready to submit' }],
   },
   {
-    id: 'SBL-24-10966', business: 'Whitcombe Family Trust', applicant: 'Eleanor Whitcombe', type: 'Trust', status: 'Under Evaluation',
+    id: 'SBL-24-10966', business: 'Whitcombe Family Trust', applicant: 'Eleanor Whitcombe', type: 'Trust', status: 'Under Evaluation', progress: 'started',
     lastUpdated: '11/14/2025', opportunityDate: '11/01/2025', purpose: 'Estate liquidity', powerId: '3100-52412', officer: 'A. Brennan', requested: 800000,
     collateral: [c('Trust Brokerage', '••••5502', 1150000, 0.7), c('Municipal Bonds', '••••5519', 300000, 0.8)],
     exceptions: ['Trust ownership not certified'],
@@ -90,7 +95,7 @@ export const PENDING_REFS: PendingRef[] = [
     history: [{ date: '11/01/2025', action: 'Opportunity created', evaluator: 'A. Brennan', notes: 'Trustee Eleanor Whitcombe' }],
   },
   {
-    id: 'SBL-24-10969', business: 'Kestrel Orthodontics PC', applicant: 'Dr. Lionel Achebe', type: 'Entity', status: 'Application In Progress',
+    id: 'SBL-24-10969', business: 'Kestrel Orthodontics PC', applicant: 'Dr. Lionel Achebe', type: 'Entity', status: 'Application In Progress', progress: 'started',
     lastUpdated: '11/13/2025', opportunityDate: '10/22/2025', purpose: 'Equipment purchase', powerId: '3100-52467', officer: 'J. Whitfield', requested: 450000,
     collateral: [c('Practice Brokerage', '••••6125', 700000, 0.7)],
     exceptions: ['Pricing exception'],
@@ -98,7 +103,7 @@ export const PENDING_REFS: PendingRef[] = [
     history: [{ date: '10/22/2025', action: 'Opportunity created', evaluator: 'J. Whitfield', notes: 'Pricing exception requested by the client' }],
   },
   {
-    id: 'SBL-24-10972', business: 'Saoirse Lowe-Whitaker (Individual)', applicant: 'Saoirse Lowe-Whitaker', type: 'Individual', status: 'Under Evaluation',
+    id: 'SBL-24-10972', business: 'Saoirse Lowe-Whitaker (Individual)', applicant: 'Saoirse Lowe-Whitaker', type: 'Individual', status: 'Under Evaluation', progress: 'evaluating',
     lastUpdated: '11/12/2025', opportunityDate: '11/04/2025', purpose: 'Tax payment', powerId: '3100-52503', officer: 'R. Castellano', requested: 500000,
     collateral: [c('Concentrated Position — single issuer', '••••7340', 600000, 0.35, 'Manual evaluation'), c('Brokerage — Core', '••••7358', 200000, 0.7)],
     exceptions: ['Concentration review requested'],
@@ -106,7 +111,7 @@ export const PENDING_REFS: PendingRef[] = [
     history: [{ date: '11/04/2025', action: 'Opportunity created', evaluator: 'R. Castellano', notes: '' }, { date: '11/12/2025', action: 'Collateral review requested', evaluator: 'R. Castellano', notes: 'Awaiting credit officer approval' }],
   },
   {
-    id: 'SBL-24-10975', business: 'Theo and Marguerite Lindahl (Joint)', applicant: 'Theo Lindahl', type: 'Joint', status: 'Pending Review',
+    id: 'SBL-24-10975', business: 'Theo and Marguerite Lindahl (Joint)', applicant: 'Theo Lindahl', type: 'Joint', status: 'Pending Review', progress: 'not-started',
     lastUpdated: '11/11/2025', opportunityDate: '11/11/2025', purpose: 'Bridge financing', powerId: '3100-52560', officer: 'S. Mitchell', requested: 1000000,
     collateral: [c('Joint Brokerage', '••••8803', 1300000, 0.7), c('Money Market', '••••8810', 160000, 0.8)],
     exceptions: ['Coverage margin is thin'],
@@ -124,7 +129,7 @@ export interface SubmittedRef {
   power: number;
   submitted: string;
   /** Underwriter status, using the Pending Review vocabulary. */
-  status: 'Underwriting In Progress' | 'Condition Requested' | 'Pending Credit Committee' | 'Underwriting Review Complete' | 'Declined';
+  status: 'Awaiting Underwriting' | 'Underwriting In Progress' | 'Condition Requested' | 'Pending Credit Committee' | 'Underwriting Review Complete' | 'Declined';
   decision: 'Pending' | 'Approved' | 'Declined';
   approvedLimit?: number;
   conditions: string[];
@@ -134,7 +139,7 @@ export interface SubmittedRef {
 }
 
 export const SUBMITTED_REFS: SubmittedRef[] = [
-  { id: 'SBL-24-10881', business: 'Beatrix Calloway (Individual)', applicant: 'Beatrix Calloway', type: 'Individual', requested: 420000, power: 515000, submitted: '11/18/2025', status: 'Underwriting In Progress', decision: 'Pending', conditions: [], note: 'Decision due in 2 business days.', powerId: '3100-49120', purpose: 'Liquidity reserve' },
+  { id: 'SBL-24-10881', business: 'Beatrix Calloway (Individual)', applicant: 'Beatrix Calloway', type: 'Individual', requested: 420000, power: 515000, submitted: '11/18/2025', status: 'Awaiting Underwriting', decision: 'Pending', conditions: [], note: 'Submitted 11/18/2025; waiting for an underwriter to be assigned.', powerId: '3100-49120', purpose: 'Liquidity reserve' },
   { id: 'SBL-24-10884', business: 'Navarro Logistics Group LLC', applicant: 'Esteban Navarro', type: 'Entity', requested: 2400000, power: 2610000, submitted: '11/17/2025', status: 'Condition Requested', decision: 'Pending', conditions: ['Provide the signed operating agreement listing all members with 25% or more ownership.'], note: 'Beneficial-owner documentation incomplete.', powerId: '3100-49188', purpose: 'Working capital' },
   { id: 'SBL-24-10887', business: 'Imogen Achterberg (Individual)', applicant: 'Imogen Achterberg', type: 'Individual', requested: 275000, power: 340000, submitted: '11/14/2025', status: 'Pending Credit Committee', decision: 'Pending', conditions: [], note: 'Pricing exception under committee review.', powerId: '3100-49231', purpose: 'Home renovation' },
   { id: 'SBL-24-10890', business: 'Okonjo-Reyes Revocable Trust', applicant: 'Adaeze Okonjo-Reyes', type: 'Trust', requested: 950000, power: 1180000, submitted: '11/12/2025', status: 'Underwriting Review Complete', decision: 'Approved', approvedLimit: 950000, conditions: [], note: 'Approved; documents issued for signature.', powerId: '3100-49305', purpose: 'Estate liquidity' },
@@ -143,8 +148,28 @@ export const SUBMITTED_REFS: SubmittedRef[] = [
   { id: 'SBL-24-10899', business: 'Larkspur Veterinary Partners LLP', applicant: 'Dr. Fenna Oduya', type: 'Entity', requested: 700000, power: 910000, submitted: '11/05/2025', status: 'Underwriting Review Complete', decision: 'Approved', approvedLimit: 700000, conditions: [], note: 'Approved; awaiting pledge and control agreement.', powerId: '3100-49466', purpose: 'Equipment purchase' },
   { id: 'SBL-24-10902', business: 'Cassius Marchetti (Individual)', applicant: 'Cassius Marchetti', type: 'Individual', requested: 1500000, power: 1710000, submitted: '11/03/2025', status: 'Underwriting In Progress', decision: 'Pending', conditions: [], note: 'Concentrated position reviewed at 50%; underwriting confirming.', powerId: '3100-49521', purpose: 'Bridge financing' },
   { id: 'SBL-24-10905', business: 'Wren Abernathy (Individual)', applicant: 'Wren Abernathy', type: 'Individual', requested: 150000, power: 231000, submitted: '10/31/2025', status: 'Underwriting Review Complete', decision: 'Approved', approvedLimit: 150000, conditions: [], note: 'Approved and booked.', powerId: '3100-49588', purpose: 'Tax payment' },
-  { id: 'SBL-24-10908', business: 'Tamsin Oyelaran-Hart (Individual)', applicant: 'Tamsin Oyelaran-Hart', type: 'Individual', requested: 520000, power: 610000, submitted: '10/29/2025', status: 'Pending Credit Committee', decision: 'Pending', conditions: [], note: 'Request exceeds the officer’s approval authority.', powerId: '3100-49640', purpose: 'Real estate down payment' },
 ];
+
+export const RETURNED_REF: PendingRef = {
+  id: 'SBL-24-10908', business: 'Tamsin Oyelaran-Hart (Individual)', applicant: 'Tamsin Oyelaran-Hart', type: 'Individual', status: 'Application In Progress', progress: 'started',
+  lastUpdated: '11/05/2025', opportunityDate: '10/14/2025', purpose: 'Real estate down payment', powerId: '3100-49640', officer: 'R. Castellano', requested: 520000,
+  collateral: [{ name: 'Brokerage — Growth', number: '••••3391', value: 620000, rate: 0.7, status: 'Auto evaluated' }, { name: 'Bond Ladder', number: '••••3407', value: 220000, rate: 0.8, status: 'Auto evaluated' }],
+  exceptions: ['Returned for correction'],
+  openItems: [
+    { step: 'Loan Information', label: 'Correct the primary source of repayment', explain: 'Underwriting could not reconcile “Investment Income” with the client’s statements. Select the source of repayment the documents support.' },
+    { step: 'Customer Information', label: 'Correct the requested loan amount', explain: 'The request exceeds the officer’s approval authority for this collateral mix. Reduce it to $500,000 or less, or route to the credit committee.' },
+  ],
+  returned: {
+    submittedAt: '10/29/2025', returnedAt: '11/05/2025',
+    reason: 'source of repayment not supported by statements; amount above approval authority.',
+    previous: [{ label: 'Primary Source of Repayment', value: 'Investment Income' }, { label: 'Requested Loan Amount', value: '$520,000' }, { label: 'Total Maximum Borrowing Power', value: '$610,000' }],
+  },
+  history: [
+    { date: '10/14/2025', action: 'Opportunity created', evaluator: 'R. Castellano', notes: '' },
+    { date: '10/29/2025', action: 'Submitted to Underwriting', evaluator: 'R. Castellano', notes: 'Requested $520,000; borrowing power $610,000' },
+    { date: '11/05/2025', action: 'Returned for correction', evaluator: 'Credit Underwriting', notes: 'Source of repayment not supported; amount above approval authority' },
+  ],
+};
 
 const doc = (name: string, status: ActiveLine['docs'][number]['status']) => ({ name, status });
 

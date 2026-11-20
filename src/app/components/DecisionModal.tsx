@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useModalA11y } from './useModalA11y';
+import { usePersistentState } from '../state/ConsoleStore';
+
+/** Underwriter memo as the legacy system returned it: one free-text block per application. Fictional. */
+const UW_MEMO: Record<string, string> = {
+  'Started Request': 'UW REVIEW IN PROCESS. CONDITIONS: (1) PROVIDE MOST RECENT MONTH-END STMT FOR ALL PLEDGED ACCTS. (2) CONFIRM PRIMARY SOURCE OF REPAYMENT - STMTS DO NOT SUPPORT AMOUNT SHOWN. (3) EXPLAIN 10/02 DEPOSIT TO BROKERAGE ACCT. RESPOND IN BANKER COMMENTS BELOW. CONDITIONS MUST BE CLEARED PRIOR TO FINAL DECISIONING.',
+  Approved: 'APPROVED. CR LIMIT PER REQUEST SUBJ TO STD COLLATERAL MAINT REQUIREMENTS. COMMUNICATE DECISION TO BORROWER AND RECORD RESPONSE.',
+  Denied: 'DECLINED. INSUFFICIENT ELIGIBLE COLLATERAL AFTER CONCENTRATION ADJ. COMMUNICATE DECISION TO BORROWER AND RECORD RESPONSE.',
+};
 
 interface DecisionModalProps {
   isOpen: boolean;
@@ -10,6 +18,8 @@ interface DecisionModalProps {
     borrowerName: string;
     loanType: string;
     requestedAmount: string;
+    /** Underwriter status from the queue; selects the underwriter memo shown. */
+    underwriterStatus?: string;
   };
   onSubmit: (decision: DecisionData) => void;
 }
@@ -28,6 +38,8 @@ export interface DecisionData {
 }
 
 export function DecisionModal({ isOpen, onClose, application, onSubmit }: DecisionModalProps) {
+  const [comments, setComments] = usePersistentState<{ at: string; text: string }[]>(`uw-comments:${application.applicationId}`, () => []);
+  const [comment, setComment] = useState('');
   const [formData, setFormData] = useState<DecisionData>({
     notificationMethod: '',
     dateCommunicated: '',
@@ -135,6 +147,26 @@ export function DecisionModal({ isOpen, onClose, application, onSubmit }: Decisi
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
+          {/* Legacy underwriter memo and banker comments (separate from the decision fields below). */}
+          <fieldset className="mb-6 border border-gray-300 p-3">
+            <legend className="px-1 text-sm font-semibold">Underwriter Comments / Conditions</legend>
+            <table className="w-full mb-2">
+              <tbody>
+                <tr><td className="font-semibold w-32">UW Status</td><td>{application.underwriterStatus ?? '—'}</td><td className="font-semibold w-24">Underwriter</td><td>CRUW-07</td></tr>
+                <tr><td className="font-semibold align-top">Memo</td><td colSpan={3} className="lg-code">{UW_MEMO[application.underwriterStatus ?? ''] ?? 'NO COMMENTS.'}</td></tr>
+                {comments.map((c, i) => (
+                  <tr key={i}><td className="font-semibold align-top">Banker cmt</td><td colSpan={3}><span className="text-gray-600">{c.at} SMITCHELL: </span>{c.text}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <label htmlFor="uw-banker-comment" className="text-xs font-medium text-gray-600 mb-1 block">Banker Comments</label>
+            <textarea id="uw-banker-comment" rows={2} className="w-full border border-gray-300" value={comment} onChange={(e) => setComment(e.target.value)} />
+            <div className="mt-1 flex gap-2">
+              <button type="button" onClick={() => { if (comment.trim()) { setComments([...comments, { at: `11/19/2025 ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`, text: comment.trim() }]); setComment(''); } }}>Save Comment</button>
+              <button type="button" onClick={() => setComment('')}>Clear</button>
+            </div>
+          </fieldset>
+
           {/* Top Fields - Always Visible */}
           <div className="grid grid-cols-3 gap-4 mb-6 pb-6 border-b border-gray-200">
             <div>

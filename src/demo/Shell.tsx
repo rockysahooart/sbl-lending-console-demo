@@ -1,3 +1,4 @@
+import '../app/legacy.css';
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type FormEvent } from 'react';
 import { X, ArrowRight } from 'lucide-react';
 import { DISCLAIMER, SCENARIOS, scenarioById, type Mode, type ScenarioId } from './data';
@@ -207,7 +208,7 @@ function BeforeHost() {
   }, [jumpToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="h-full min-h-0 overflow-hidden">
+    <div className="sbl-legacy h-full min-h-0 overflow-hidden">
       {plan.view === 'dashboard' ? <LoanTable key={navCount} onMenuClick={() => setMenu(true)} initialView={plan.initial} /> : <PendingReview key={navCount} initialApplicationId={plan.reviewApp} onBack={() => setPlan({ view: 'dashboard' })} />}
       <NavigationMenu
         isOpen={menu}

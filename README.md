@@ -149,8 +149,10 @@ specialist and the work.
      compliance wording, metadata), major flows, scope or the production
      environment is logged as *escalated*, with the exact proposed change,
      for Rocky to decide.
-   - **Boundaries.** The Before experience is never changed. Nothing is
-     committed, pushed or deployed without Rocky.
+   - **Boundaries.** The Before experience's behaviour is never changed;
+     its presentation was re-skinned only at Rocky's direction (see "Before —
+     the original console"). Nothing is committed, pushed or deployed without
+     Rocky.
 3. **Verification.** Felix checks every logged change, runs the suites
    (end-to-end, state, toggle sync, keyboard, axe-core) at several widths and
    fixes regressions. Paul does a final design review across the whole
@@ -213,8 +215,9 @@ on this prototype.
     - axe-core reports 0 violations on 20 tested states;
     - no horizontal overflow on 9 screens at 7 widths (320–1920 px);
     - a keyboard-only walk completes a request from Console to Submit;
-    - the Before experience is pixel-identical to its baseline on 8
-      screens.
+    - the Before experience was pixel-identical to its baseline on 8
+      screens at that point (it has since been re-skinned as legacy; see
+      "Before — the original console").
   - **Final design review (Paul):** *pass*. Paul made four small consistency
     fixes during the review, and one of them (**Switch to Loan Officer**)
     is listed for Rocky to confirm. Two escalations should be decided before
@@ -333,7 +336,14 @@ and After is his redesign. The app has two stages, each with its own purpose:
 
 ### Before — the original console
 
-The legacy experience, kept unchanged as the historical baseline:
+The legacy experience, kept as the historical baseline. At Rocky's direction it
+is presented as the dated enterprise system it was: compact system type,
+equal-weight beveled buttons, gray grid tables, plain step tabs with no
+completion state, an application header repeated on every step, and an
+underwriter memo whose conditions are answered in free-text comments, separate
+from the decision. Its workflow, data and behaviour are unchanged, so every task
+still completes and the Before/After toggle opens the equivalent screen. The
+skin lives in `src/app/legacy.css`, scoped to Before. It covers:
 - a loan dashboard;
 - an evaluation screen with auto and manual borrowing-power evaluation;
 - a multi-step application (customer, co-borrower, loan information,
@@ -363,25 +373,21 @@ accessibility and interaction states.
 
 What changed is presentation and behaviour, not the workflow:
 
-- **Neutral surface hierarchy.** Each Carbon neutral has one job:
-  - **White:** the page, rows and form content.
-  - **Gray 10:** bands (toolbars, section headings, pagination, supporting
-    panels, expanded record detail).
-  - **Gray 20:** table column headers and the current record row.
-  - **Gray 30:** the edges of bands.
-  - **Gray 50:** strong rules (totals).
-  - **Gray 70 and Gray 100:** secondary and primary text.
-
-  IBM Blue is reserved for selection, focus and actions. An expanded record
-  shares its row's Gray 10 and one continuous blue indicator, so the two read
-  as a unit.
+- **White canvas, purposeful neutrals.** White is the canvas for pages,
+  rows, toolbars, pagination, section headings and side panels (separated by
+  hairline rules, not grey slabs). Gray is used only where it organises:
+  table column headers (Gray 10 with a strong rule), the expanded record
+  detail and the selected row. Colour carries meaning only: status,
+  selection, focus and action.
 - **Application status panel.** Shows Requested Loan Amount against Total
   Maximum Borrowing Power, and every open item grouped by step, each linked
   to the field where it is completed.
-- **Submit explains itself.** If anything is open, Submit lists the items in
-  step order with **Go to** links instead of submitting an incomplete request.
-- **Progress shows real state:** Completed, In progress, Not started, or the
-  number of open items.
+- **Prerequisites with explanations.** Next stays disabled until the current
+  step's required items are complete; later steps show "Complete <step>
+  first"; Submit stays disabled until every check is complete; Start Request
+  needs at least one eligible account. The reason always sits beside the
+  disabled control, with links to each missing item. Back and draft saving are
+  never blocked. See [Application lifecycle and guidance](#application-lifecycle-and-guidance).
 - **Corrections kept from compliance review:**
   - no preselected answers;
   - no spouse name, and Regulation B marital-status values;
@@ -389,9 +395,50 @@ What changed is presentation and behaviour, not the workflow:
   - beneficial and trust ownership;
   - corrected product values (Before shows "Texas" as the loan purpose and
     "Real Estate" as the security).
-- **Underwriting conditions.** They appear as *Condition Requested* in
-  Submitted Applications and Pending Review, with **Respond**; approval
-  follows once they are provided.
+- **Underwriting outcomes.** Conditions appear as *Action Required ·
+  Additional information requested* with **Respond to condition**; a request
+  can also be returned for correction, declined or approved, and keeps its
+  submission history throughout.
+
+### Application lifecycle and guidance
+
+*This section stands on its own: every After screen uses one lifecycle model
+(`src/demo/after/lifecycle.ts`), so a status, a count, a queue and a next
+action can never disagree.*
+
+| Status | What it means | Where it appears |
+|---|---|---|
+| Not Started | Opportunity created; nothing evaluated yet | Pending Evaluations |
+| In Progress | Being evaluated or completed; nothing blocking | Pending Evaluations (evaluation stage) or Evaluations |
+| Action Required | A specific correction or response is needed (for example an expired co-borrower ID, a collateral shortfall, incomplete beneficial ownership, a collateral review, a return for correction, an underwriting condition) | Evaluations, or Submitted Applications when underwriting asked |
+| Ready to Submit | Every readiness check is complete | Evaluations |
+| Submitted | With Credit Underwriting, awaiting pickup | Submitted Applications · Pending Review |
+| Under Review | Underwriting or the credit committee is reviewing it | Submitted Applications · Pending Review |
+| Approved | Approved; documents being signed | Submitted Applications · Active Credit |
+| Declined | Declined by Credit Underwriting | Submitted Applications · Pending Review |
+| Completed | Booked; the line is active | Submitted Applications · Active Credit |
+
+- **Colour is never the only signal.** Each status is a Carbon tag with its
+  own colour, an icon and its words, plus a one-line reason ("Expired
+  co-borrower ID").
+- **Specific next actions.** Rows say what to do ("Start Application",
+  "Update co-borrower ID", "Resolve the shortfall", "Submit Application",
+  "Respond to condition"), not "Review application". The action opens the
+  exact field, marks it, and explains the correction; once it is resolved,
+  the callout confirms it and offers the next item.
+- **Everything updates together.** Completing a requirement updates the
+  status, the queue the application sits in, the tab counts, the progress
+  navigation, the Application status panel and button availability.
+- **Returned for correction.** A returned request goes back to Evaluations
+  as Action Required. The corrections are editable, the previously submitted
+  values are shown read-only, the submission history is kept, and
+  **Resubmit** unlocks once every correction is made.
+- **One emphasised action per view.** Row actions are quiet links; the
+  expanded record's next action and the step's Next or Submit are the primary
+  buttons.
+
+This lifecycle round was specified by Sarthak "Rocky" Sahoo and implemented
+by Claude Code; Felix (QA and accessibility) verifies it against WCAG 2.2 AA.
 
 ### Additional fictional records (After only)
 

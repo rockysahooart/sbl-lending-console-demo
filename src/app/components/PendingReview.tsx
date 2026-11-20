@@ -379,6 +379,7 @@ export function PendingReview({ initialApplicationId }: PendingReviewProps) {
             borrowerName: selectedApplication.borrowerName,
             loanType: selectedApplication.loanType,
             requestedAmount: selectedApplication.requestedAmount,
+            underwriterStatus: selectedApplication.underwriterStatus,
           }}
           onSubmit={handleSubmitDecision}
         />

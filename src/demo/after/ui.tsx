@@ -1,3 +1,4 @@
+import { STATUS_META, type Status } from './lifecycle';
 import { useId, type ReactNode } from 'react';
 import {
   Button,
@@ -89,6 +90,17 @@ export function Tag({ tone, children }: { tone: Tone; children: ReactNode }) {
     <CTag type={t.type as never} size="md" renderIcon={t.Icon} className="!m-0">
       {children}
     </CTag>
+  );
+}
+
+/** Lifecycle status: colour, icon and words (STATUS_META in lifecycle.ts), with an optional detail line. */
+export function StatusTag({ status, detail }: { status: Status; detail?: string }) {
+  const m = STATUS_META[status];
+  return (
+    <span className="inline-flex flex-col items-start gap-0.5">
+      <CTag type={m.tag as never} size="md" renderIcon={m.Icon} className="!m-0">{status}</CTag>
+      {detail && detail !== status && <span className="t-helper-01 text-[var(--cds-text-secondary)]">{detail}</span>}
+    </span>
   );
 }
 
