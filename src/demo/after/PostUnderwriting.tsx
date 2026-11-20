@@ -81,7 +81,7 @@ export function Underwriting({ focusId, fix, onRoute, onSelect }: { focusId?: st
     { key: 'status', label: 'Underwriter Status', type: 'enum', get: (r) => life(r).status },
     { key: 'final', label: 'Final Decision', type: 'enum', get: finalOf },
     { key: 'updated', label: 'Last Updated', type: 'date', get: (r) => r.submitted },
-    { key: 'action', label: 'Actions', type: 'enum', get: (r) => (life(r).status === 'Action Required' ? 'Respond' : 'View') },
+    { key: 'action', label: 'Actions', type: 'enum', noSort: true, get: (r) => (life(r).status === 'Action Required' ? 'Respond' : 'View') },
   ];
   const cols = useColumns(shown, colsDef, () => setPage(1));
   const pages = Math.max(1, Math.ceil(cols.rows.length / pageSize));

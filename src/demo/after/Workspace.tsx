@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Accordion,
   AccordionItem,
@@ -145,7 +146,7 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
           <h1 className="t-heading-05">{step.n}. {step.label}</h1>
           <StatusTag status={st.status} />
         </div>
-        <p className="t-body-01 text-[var(--cds-text-secondary)] mt-1">{st.detail !== st.status ? `${st.detail}. ` : ''}{st.why}</p>
+        <p className="t-body-01 text-[var(--cds-text-secondary)] mt-1">{st.detail !== st.status && !st.why.startsWith(st.detail) ? `${st.detail}. ` : ''}{st.why}</p>
       </header>
       {locked && (
         <InlineNotification kind="info" lowContrast hideCloseButton className="!max-w-none mb-6" title={req.status === 'submitted' ? 'Submitted to underwriting' : req.status === 'approved' ? 'Approved' : 'Declined'} subtitle={`${req.status === 'submitted' ? `Submitted ${req.submittedAt}` : req.status === 'approved' ? `Approved ${req.approvedAt}` : `Declined ${req.declinedAt}`}. This request is read-only; the submitted information is shown below.`} />
@@ -195,28 +196,29 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
               {section === 'collateral' && <CollateralStep m={m} onGo={go} items={items} onGoItem={goItem} onSubmitted={() => onRoute({ page: 'confirmation', id: route.id })} />}
             </div>
           </fieldset>
-          {section !== 'collateral' && (
-            <footer className="step-footer mx-auto w-record">
-              <Button kind="ghost" size="md" onClick={back}>{idx === 0 ? 'Back to Evaluation' : 'Back'}</Button>
-              <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
-                <p id="next-help" className="t-helper-01 text-[var(--cds-text-secondary)] max-w-md text-right" aria-live="polite">
-                  {canNext ? 'Changes are saved automatically.' : (
-                    <>
-                      To continue, complete {stepOpen.length} item{stepOpen.length > 1 ? 's' : ''} on this step:{' '}
-                      {stepOpen.slice(0, 2).map((i, k) => (
-                        <span key={i.id}>{k > 0 && '; '}<button type="button" className="cds--link t-helper-01" onClick={() => goItem(i)}>{i.label}</button></span>
-                      ))}
-                      {stepOpen.length > 2 && ` and ${stepOpen.length - 2} more`}. Your draft is saved.
-                    </>
-                  )}
-                </p>
-                <Button size="md" onClick={next} disabled={!canNext} aria-describedby="next-help">Next</Button>
-              </div>
-            </footer>
-          )}
         </div>
         <StatusPanel m={m} onGo={go} />
       </div>
+      {section !== 'collateral' && (
+        <footer className="step-footer step-footer--wide">
+          <Button kind="ghost" size="md" onClick={back}>{idx === 0 ? 'Back to Evaluation' : 'Back'}</Button>
+          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+            <p id="next-help" className="t-helper-01 text-[var(--cds-text-secondary)] max-w-md text-right" aria-live="polite">
+              {canNext ? 'Changes are saved automatically.' : (
+                <>
+                  To continue, complete {stepOpen.length} item{stepOpen.length > 1 ? 's' : ''} on this step:{' '}
+                  {stepOpen.slice(0, 2).map((i, k) => (
+                    <span key={i.id}>{k > 0 && '; '}<button type="button" className="cds--link t-helper-01" onClick={() => goItem(i)}>{i.label}</button></span>
+                  ))}
+                  {stepOpen.length > 2 && ` and ${stepOpen.length - 2} more`}. Your draft is saved.
+                </>
+              )}
+            </p>
+            <Button size="md" onClick={next} disabled={!canNext} aria-describedby="next-help">Next</Button>
+          </div>
+        </footer>
+      )}
+      <div id="step-footer-slot" />
       <AcknowledgmentModal m={m} open={ackOpen} onClose={() => setAckOpen(false)} onStart={() => setAckOpen(false)} startLabel="Save acknowledgment" />
     </div>
     </FixCtx.Provider>
@@ -393,6 +395,13 @@ function MaskedId({ person, requestId }: { person: Person; requestId: string }) 
 
 /** ADA-08: one verification date (the client record's) for every party; an expired ID is never shown as "verified". */
 /** Before's ID-card profile, modernised: credential band, portrait block, identifiers, ID footer. */
+/** Renders a step's footer in the full-width slot below the workspace, so Next/Submit sit at the far right. */
+function FooterSlot({ children }: { children: ReactNode }) {
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  useEffect(() => { setEl(document.getElementById('step-footer-slot')); }, []);
+  return el ? createPortal(children, el) : null;
+}
+
 function IdCard({ role, person, sub, requestId, idNumber, expires, expired }: { role: string; person: Person; sub?: string; requestId: string; idNumber: string; expires: string; expired: boolean }) {
   const initials = person.name.split(' ').map((x) => x[0]).join('').slice(0, 2);
   return (
@@ -403,20 +412,16 @@ function IdCard({ role, person, sub, requestId, idNumber, expires, expired }: { 
         <div className="id-card__main">
           <p className="t-heading-03">{person.name}</p>
           {sub && <p className="t-helper-01 text-[var(--cds-text-secondary)]">{sub}</p>}
-          <dl className="id-card__ids grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">
+          {/* Same field positions as the original card: DOB | MDM ID, SSN | Power ID, then Phone and Email full width. */}
+          <dl className="id-card__ids grid grid-cols-2 gap-x-6 gap-y-3">
             <KV label="DOB" value={person.dob} mono />
-            <KV label="SSN" value={<MaskedId person={person} requestId={requestId} />} />
             <KV label="MDM ID" value={person.mdmId} mono />
+            <KV label="SSN" value={<MaskedId person={person} requestId={requestId} />} />
             <KV label="Power ID" value={person.powerId} mono />
             <KV label="Phone" value={person.phone} />
             <KV label="Email" value={<>{person.email.split('@')[0]}<wbr />@{person.email.split('@').slice(1).join('@')}</>} />
           </dl>
         </div>
-      </div>
-      <div className="id-card__foot">
-        <span><span className="lbl">{person.idType}</span><span className="tabular-nums">{idNumber}</span></span>
-        <span><span className="lbl">Expires</span><span className="tabular-nums">{expires}</span></span>
-        <Tag tone={expired ? 'error' : 'success'}>{expired ? 'Expired' : 'Valid'}</Tag>
       </div>
     </section>
   );
@@ -471,18 +476,24 @@ function CustomerStep({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: strin
           expires={p.idExpires}
           expired={false}
         />
-        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5 mt-6">
+        {/* Spatial familiarity: the original's three rows (address · identity · employment) keep their order and
+            grouping, so each row starts where bankers expect it; only the column count adapts to the narrower record. */}
+        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5 mt-6" aria-label="Address">
           <KV label="Address Line 1" value={p.address1} />
           <KV label="Address Line 2" value={p.address2 || '—'} />
           <KV label="City" value={p.city} />
           <KV label="State" value={p.state} />
           <KV label="ZIP Code" value={p.zip} mono />
           <KV label="Customer Since" value={p.customerSince} mono />
+        </dl>
+        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5 mt-5" aria-label="Identity">
           <KV label="Proof of Identity" value={p.idType} />
           <KV label="ID Number" value={p.idNumber} mono />
           <KV label="Place of Issuance" value={p.idPlace} />
           <KV label="Date Issued" value={p.idIssued} mono />
           <KV label="Date of Expiration" value={<span className="inline-flex flex-wrap items-center gap-2"><span className="tabular-nums">{p.idExpires}</span><Tag tone="success">Valid</Tag></span>} />
+        </dl>
+        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5 mt-5" aria-label="Employment">
           <KV label="Employment Status" value={p.employmentStatus} />
           <KV label="Employment Title" value={p.employmentTitle} />
           <KV label="Citizenship Status" value={p.citizenship} />
@@ -753,13 +764,15 @@ function LoanStep({ m }: { m: RequestModel }) {
       </StepSection>
 
       <StepSection id="product" title="Product Details" description="Set by the product. Read-only.">
-        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5">
+        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5" aria-label="Product">
           <KV label="Product Category" value="Line of Credit" />
           <KV label="Product Type" value="QLP 2" />
           <KV label="Personal Loan Purpose" value="Personal Only" />
           <KV label="Primary Loan Purpose" value={req.purpose} />
           <KV label="Loan Secured By" value="Marketable securities" />
           <KV label="RM Officer" value={s.createdBy} />
+        </dl>
+        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5 mt-5" aria-label="Rate and disclosures">
           <KV label="Interest Rate Type" value="Variable" />
           <KV label="Rate Index" value="SOFR - Daily" />
           <KV label="Payment Structure" value="Interest Only" />
@@ -932,7 +945,8 @@ function CollateralStep({ m, onGo, items, onGoItem, onSubmitted }: { m: RequestM
           </Table>
         </div>
       </StepSection>
-      <footer className="step-footer">
+      <FooterSlot>
+      <footer className="step-footer step-footer--wide">
         <Button kind="ghost" size="md" onClick={() => onGo('loan')}>Back</Button>
         <div className="flex items-center gap-4">
           <p id="submit-help" className="t-helper-01 text-[var(--cds-text-secondary)] max-w-xs text-right" aria-live="polite">
@@ -945,6 +959,7 @@ function CollateralStep({ m, onGo, items, onGoItem, onSubmitted }: { m: RequestM
           {!locked && role === 'Credit Officer' && <Button kind="tertiary" size="md" onClick={switchToLoanOfficer}>Switch to Loan Officer</Button>}
         </div>
       </footer>
+      </FooterSlot>
       <Modal open={confirm} size="sm" modalHeading={resubmit ? "Resubmit loan request to underwriting?" : "Submit loan request to underwriting?"} primaryButtonText={resubmit ? "Resubmit" : "Submit"} secondaryButtonText="Cancel" onRequestSubmit={submit} onRequestClose={() => setConfirm(false)}>
         <dl className="grid grid-cols-2 gap-4 mb-4">
           <KV label="Application" value={`${s.requestId}, ${s.entityName ?? s.primary.name}`} />

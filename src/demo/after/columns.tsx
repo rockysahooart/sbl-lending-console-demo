@@ -10,7 +10,7 @@ import { cx } from './ui';
  * Filters combine (AND) with each other and with the queue toolbar; active filters show as dismissible tags.
  */
 export type ColType = 'text' | 'enum' | 'number' | 'date';
-export interface Col<T> { key: string; label: string; type: ColType; get: (r: T) => string | number; num?: boolean; money?: boolean }
+export interface Col<T> { key: string; label: string; type: ColType; get: (r: T) => string | number; num?: boolean; money?: boolean; noSort?: boolean }
 type F = { text?: string; values?: string[]; min?: string; max?: string };
 
 export const toTime = (v: string | number) => {
@@ -82,12 +82,12 @@ export function ColHeader<T>({ st, k, className }: { st: ColState<T>; k: string;
   const apply = () => { st.set(k, draft); close(); };
   const id = `cf-${k}`;
   return (
-    <TableHeader className={className} aria-sort={dir === 'ASC' ? 'ascending' : dir === 'DESC' ? 'descending' : 'none'}>
+    <TableHeader className={className} aria-sort={c.noSort ? undefined : dir === 'ASC' ? 'ascending' : dir === 'DESC' ? 'descending' : 'none'}>
       <div ref={ref} className={cx('relative inline-flex items-center', c.num && 'justify-end w-full')}>
-        <button type="button" className="col-sort inline-flex items-center gap-1 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--cds-focus)]" onClick={() => st.toggleSort(k)} aria-label={`${c.label}: sort ${dir === 'ASC' ? 'descending' : dir === 'DESC' ? 'off' : 'ascending'}`}>
+        {c.noSort ? <span className="col-sort inline-flex items-center font-semibold">{c.label}</span> : <button type="button" className="col-sort inline-flex items-center gap-1 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--cds-focus)]" onClick={() => st.toggleSort(k)} aria-label={`${c.label}: sort ${dir === 'ASC' ? 'descending' : dir === 'DESC' ? 'off' : 'ascending'}`}>
           {c.label}
           {dir === 'ASC' ? <ArrowUp size={16} aria-hidden="true" /> : dir === 'DESC' ? <ArrowDown size={16} aria-hidden="true" /> : <ArrowsVertical size={16} aria-hidden="true" className="opacity-50" />}
-        </button>
+        </button>}
         <button ref={btn} type="button" className={cx('col-filter-btn', on && 'is-on')} aria-expanded={open} aria-controls={id} aria-label={`Filter ${c.label}${on ? ' (active)' : ''}`} onClick={() => setOpen(!open)}>
           <Filter size={16} aria-hidden="true" />
         </button>

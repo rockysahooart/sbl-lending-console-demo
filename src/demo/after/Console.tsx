@@ -297,7 +297,7 @@ function QueueTable({ rows, onRoute, empty, initialExpanded, onExpandedChange }:
     { key: 'loan', label: 'Loan Type', type: 'enum', get: (r) => r.loanType },
     { key: 'status', label: 'Status', type: 'enum', get: (r) => r.status },
     { key: 'updated', label: 'Last Updated', type: 'date', get: (r) => r.lastUpdated },
-    { key: 'action', label: 'Actions', type: 'enum', get: (r) => r.action.label },
+    { key: 'action', label: 'Actions', type: 'enum', noSort: true, get: (r) => r.action.label },
   ], []);
   const cols = useColumns(shown, colsDef, () => setPage(1));
   const pages = Math.max(1, Math.ceil(cols.rows.length / pageSize));

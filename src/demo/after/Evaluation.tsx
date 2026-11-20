@@ -316,7 +316,7 @@ function ManualEvaluation({ m, rows, total }: { m: RequestModel; rows: RequestMo
                   </div>
                 </div>
                 <Table size="md" aria-label={`Holdings in ${r.account.name}`}>
-                  <TableHead><TableRow><TableHeader>Data</TableHeader><TableHeader className="num">Collateral Value</TableHeader><TableHeader className="num">Advance rate</TableHeader><TableHeader className="num">Lendable Value</TableHeader></TableRow></TableHead>
+                  <TableHead><TableRow><TableHeader>Data</TableHeader><TableHeader className="num">Collateral Value</TableHeader><TableHeader className="num">Advance Rate</TableHeader><TableHeader className="num">Lendable Value</TableHeader></TableRow></TableHead>
                   <TableBody>
                     {r.holdings.map((h) => (
                       <TableRow key={h.label}>
@@ -508,7 +508,7 @@ function OutsideCalculator({ m }: { m: RequestModel }) {
       </div>
       <div role="tabpanel" id="calc-panel" aria-labelledby={`calc-tab-${tab}`} className="overflow-x-auto">
         <table>
-          <thead><tr><th scope="col">Asset</th><th scope="col" className="num">Collateral Value (USD)</th><th scope="col" className="num">Advance rate</th><th scope="col" className="num">Lendable Value</th></tr></thead>
+          <thead><tr><th scope="col">Asset</th><th scope="col" className="num">Collateral Value (USD)</th><th scope="col" className="num">Advance Rate</th><th scope="col" className="num">Lendable Value</th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>

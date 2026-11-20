@@ -86,3 +86,57 @@
   .col-filter-pop input[type=text], .col-filter-pop input[type=number], .col-filter-pop input[type=date] { inline-size: 100%; padding: 0.375rem 0.5rem; border: 0; border-block-end: 1px solid #8d8d8d; background: #f4f4f4; }
   .active-filters { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.5rem 1rem; border-block-end: 1px solid var(--cds-border-subtle-01); background: var(--cds-background); }
 }
+
+// ---------- Final cleanup: balanced buttons ----------
+// Carbon reserves 64px on the right of every button for an icon, so labels sat off-centre
+// (16px left, 64px right). Here the icon flows after the label with an 8px gap, padding is
+// symmetric, and the label is centred on both axes, including the 64px modal footer buttons.
+.sbl-after .cds--btn:not(.cds--btn--icon-only):not(.cds--btn--ghost.\!px-0),
+.cds--modal-footer .cds--btn {
+  padding-inline: 15px;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: center;
+  .cds--btn__icon { position: static; margin: 0; flex: none; }
+}
+.cds--modal-footer .cds--btn { padding-block: 0; }
+.sbl-after .queue-toolbar .cds--btn, .sbl-after .cds--btn--sm { white-space: nowrap; }
+// Modal footer buttons are 64px tall; centre their labels instead of Carbon's top-left placement.
+.cds--modal .cds--modal-footer .cds--btn:not(.cds--skeleton) { align-items: center; justify-content: center; padding-block: 0; }
+// Sortable/filterable headers: one line, left-aligned, icons tight to the label (numeric columns right-aligned).
+.sbl-after .col-sort { white-space: nowrap; text-align: start; gap: 0.25rem; }
+.sbl-after th .cds--table-header-label > div, .sbl-after th > div.relative { white-space: nowrap; }
+.sbl-after th.num .col-sort { text-align: end; }
+.sbl-after .col-filter-btn { margin-inline-start: 0.125rem; }
+// Queue tables: 12px cell gutters so seven columns and the action button fit at 1440 without scrolling.
+.sbl-after .queue-table th, .sbl-after .queue-table td:not(.cds--table-expand) { padding-inline: 0.75rem; }
+
+// ---------- Final cleanup: dividers only where they separate something ----------
+// The table's grey header band already separates the toolbar and the filter row from the rows,
+// and the last row's rule already closes the table, so those extra lines are removed.
+.sbl-after .queue-toolbar { border-block-end: 0; }
+.sbl-after .active-filters { border-block-end: 0; padding-block: 0.25rem 0.75rem; }
+.sbl-after .queue-footer { border-block-start: 0; }
+// Pagination: no vertical separators between its own controls.
+.sbl-after .cds--pagination,
+.sbl-after .cds--pagination .cds--pagination__left > *,
+.sbl-after .cds--pagination .cds--pagination__right > *,
+.sbl-after .cds--pagination .cds--pagination__control-buttons,
+.sbl-after .cds--pagination .cds--pagination__button { border-inline: 0; border-block-start: 0; }
+// Calculator: the tab strip carries the only rule under the intro; rows close themselves.
+.sbl-after .calc__head { border-block-end: 0; padding-block-end: 0.5rem; }
+.sbl-after .calc__totals { border-block-start: 0; }
+.sbl-after .calc tbody tr:last-child td { border-block-end: 1px solid var(--cds-border-subtle-01); }
+
+// Spatial familiarity: Phone and Email span the card, as on the original ID card.
+.sbl-after .id-card__ids > div:nth-child(n+5) { grid-column: 1 / -1; }
+
+// Spatial familiarity (Paul): the step footer spans the workspace, so Next / Submit sit at the far right as
+// in the original and as Start Request does on Evaluation; Back stays at the form's left edge.
+.sbl-after .step-footer--wide { margin-block-start: 0; }
+@media (min-width: 1024px) { .sbl-after .step-footer--wide { padding-inline-start: calc(240px + 2rem); } }
+@media (min-width: 1280px) {
+  .sbl-after .step-footer--wide { padding-inline-start: calc(224px + 2rem); }
+  .sbl-after aside.status-panel { max-block-size: calc(100dvh - 9rem - var(--sbl-footer-h, 0px)); }
+}
