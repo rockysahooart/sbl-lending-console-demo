@@ -1,0 +1,297 @@
+import { useState } from 'react';
+import { ActionableNotification, Button, InlineNotification, Modal, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow } from '@carbon/react';
+import { CheckmarkFilled, Time } from '@carbon/icons-react';
+import { ACTIVE_LINES, PIPELINE, fmtMoney, fmtPct, type ActiveLine, type ScenarioId } from '../data';
+import { useAfterRequest, useAudit } from './state';
+import { KV, Money, PageHeader, Tag, cx } from './ui';
+import type { Route } from './AfterApp';
+
+function useScenarioLines() {
+  // Fixed order of hook calls (three scenarios).
+  return (['single', 'joint', 'complex'] as ScenarioId[]).map((id) => ({ id, m: useAfterRequest(id) }));
+}
+
+/** Approved limit used by the simulated decision: lower of requested amount and estimated borrowing power, rounded down to $10,000. */
+const approvedLimit = (requested: number, power: number) => Math.floor(Math.min(requested, power) / 10000) * 10000;
+
+export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: (r: Route) => void }) {
+  const lines = useScenarioLines();
+  const { log } = useAudit();
+  const [confirmFor, setConfirmFor] = useState<string | null>(null);
+  const rows = [
+    ...lines.filter((l) => l.m.req.status !== 'draft').map((l) => ({ key: l.m.s.requestId, client: l.m.s.entityName ?? l.m.s.primary.name, requested: l.m.req.requested, power: l.m.ev.total, submitted: l.m.req.submittedAt ?? '', status: l.m.req.status, scenario: l })),
+    ...PIPELINE.filter((p) => p.status === 'In Underwriting').map((p) => ({ key: p.requestId, client: p.client, requested: p.requestedAmount, power: p.borrowingPower, submitted: '11/12/2025', status: 'submitted' as const, scenario: undefined })),
+  ];
+  const [sel, setSel] = useState(focusId && rows.some((r) => r.key === focusId) ? focusId : rows[0]?.key);
+  const cur = rows.find((r) => r.key === sel);
+  const target = rows.find((r) => r.key === confirmFor);
+
+  return (
+    <div className="px-4 sm:px-8 py-8">
+      <PageHeader title="Underwriting" description="Requests awaiting or holding an underwriting decision. Each request stays linked to its origination record." />
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_440px] gap-6 items-start">
+        <TableContainer title="Requests in underwriting">
+          <div className="overflow-x-auto">
+            <Table aria-label="Requests in underwriting" size="lg" className="min-w-[640px]">
+              <TableHead>
+                <TableRow>
+                  <TableHeader>Request</TableHeader>
+                  <TableHeader className="num">Requested amount</TableHeader>
+                  <TableHeader className="num">Estimated borrowing power</TableHeader>
+                  <TableHeader>Submitted</TableHeader>
+                  <TableHeader>Status</TableHeader>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.key} isSelected={sel === r.key}>
+                    <TableCell>
+                      <Button kind="ghost" size="sm" className="!px-0" onClick={() => setSel(r.key)} aria-pressed={sel === r.key}>{r.client}</Button>
+                      <div className="t-helper-01 text-[var(--cds-text-secondary)]">{r.key}</div>
+                    </TableCell>
+                    <TableCell className="num"><Money value={r.requested} /></TableCell>
+                    <TableCell className="num"><Money value={r.power} /></TableCell>
+                    <TableCell>{r.submitted}</TableCell>
+                    <TableCell>{r.status === 'approved' ? <Tag tone="success">Approved</Tag> : <Tag tone="info">Under review</Tag>}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TableContainer>
+        {cur && (
+          <section aria-label={`Underwriting detail for ${cur.client}`} className="bg-[var(--cds-layer-01)] p-6 xl:sticky xl:top-6">
+            <h2 className="t-heading-03">{cur.client}</h2>
+            <p className="t-helper-01 text-[var(--cds-text-secondary)]">{cur.key}</p>
+            <dl className="grid grid-cols-2 gap-4 mt-5">
+              <KV label="Underwriter" value="Credit Underwriting" />
+              <KV label="Service level" value={cur.status === 'approved' ? 'Decision issued' : 'Decision due in 2 business days'} />
+              <KV label="Requested amount" value={fmtMoney(cur.requested)} mono />
+              <KV label="Estimated borrowing power" value={fmtMoney(cur.power)} mono />
+            </dl>
+            <h3 className="t-heading-02 mt-6">Documentation</h3>
+            <ul className="mt-2 space-y-2 t-body-01">
+              {[
+                ['Credit application', true],
+                ['Collateral evaluation and reviews', true],
+                ['Identification, screening and ownership records', true],
+                ['Pledge and control agreement', cur.status === 'approved'],
+              ].map(([d, ok]) => (
+                <li key={d as string} className="flex items-center gap-2">
+                  {ok ? <CheckmarkFilled size={16} className="fill-[var(--cds-support-success)]" aria-hidden="true" /> : <Time size={16} aria-hidden="true" />}
+                  <span>{d}</span>
+                  <span className="ml-auto t-helper-01 text-[var(--cds-text-secondary)]">{ok ? 'Received' : 'Issued after approval'}</span>
+                </li>
+              ))}
+            </ul>
+            {cur.scenario ? (
+              cur.status === 'approved' ? (
+                <InlineNotification kind="success" lowContrast hideCloseButton className="!max-w-none mt-6" title="Approved" subtitle={`Approved credit limit ${fmtMoney(approvedLimit(cur.requested, cur.power))}, ${cur.scenario.m.req.approvedAt}.`} />
+              ) : (
+                <div className="mt-6 border border-dashed border-[var(--cds-border-strong-01)] p-4">
+                  <p className="t-helper-01 text-[var(--cds-text-secondary)]">Demo action: simulates an underwriting decision so the servicing stage can be explored.</p>
+                  <Button kind="tertiary" size="sm" className="mt-3" onClick={() => setConfirmFor(cur.key)}>Simulate approval</Button>
+                </div>
+              )
+            ) : (
+              <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-6">Reference record. Decisions can be simulated on the three scenario requests.</p>
+            )}
+            <div className="mt-6 flex flex-wrap gap-3">
+              {cur.scenario && cur.status === 'approved' && <Button size="sm" onClick={() => onRoute({ page: 'credit', id: cur.key })}>View credit line</Button>}
+              <Button kind="ghost" size="sm" onClick={() => onRoute(cur.scenario ? { page: 'request', id: cur.scenario.id, section: 'review' } : { page: 'pipeline' })}>{cur.scenario ? 'View origination record' : 'Back to pipeline'}</Button>
+            </div>
+          </section>
+        )}
+      </div>
+      <Modal
+        open={!!target}
+        size="sm"
+        modalHeading="Simulate an approval?"
+        primaryButtonText="Simulate approval"
+        secondaryButtonText="Cancel"
+        onRequestClose={() => setConfirmFor(null)}
+        onRequestSubmit={() => {
+          if (!target?.scenario) return;
+          const at = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          target.scenario.m.setReq((p) => ({ ...p, status: 'approved', approvedAt: `11/19/2025, ${at}` }));
+          log('Underwriting decision (simulated)', `Approved; credit limit ${fmtMoney(approvedLimit(target.requested, target.power))}`, target.key);
+          setConfirmFor(null);
+        }}
+      >
+        {target && (
+          <p className="t-body-01">Demo action. This records a simulated approval for {target.client} with an approved credit limit of {fmtMoney(approvedLimit(target.requested, target.power))} (the lower of the requested amount and the estimated borrowing power). No real credit decision is made.</p>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+interface LineVM extends ActiveLine { scenarioId?: ScenarioId }
+
+export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: (r: Route) => void }) {
+  const lines = useScenarioLines();
+  const { global, setGlobal, log } = useAudit();
+  const [confirmSign, setConfirmSign] = useState<string | null>(null);
+  const approved: LineVM[] = lines
+    .filter((l) => l.m.req.status === 'approved')
+    .map((l) => {
+      const signed = global.signedLines.includes(l.m.s.requestId);
+      return {
+        id: l.m.s.requestId,
+        scenarioId: l.id,
+        client: l.m.s.entityName ?? l.m.s.primary.name,
+        approvedOn: l.m.req.approvedAt ?? '',
+        limit: approvedLimit(l.m.req.requested, l.m.ev.total),
+        outstanding: 0,
+        collateralValue: l.m.ev.pledgedValue,
+        maintenanceLtv: 0.7,
+        docs: [
+          { name: 'Credit agreement', status: signed ? 'Complete' : 'Pending signature' },
+          { name: 'Pledge and control agreement', status: signed ? 'Complete' : 'Pending signature' },
+        ],
+        collateral: l.m.ev.rows.filter((r) => r.pledged).map((r) => ({ account: `${r.account.name} ${r.account.number}`, value: r.value, change30d: 0 })),
+      };
+    });
+  const all: LineVM[] = [...approved, ...ACTIVE_LINES];
+  const [sel, setSel] = useState(focusId && all.some((l) => l.id === focusId) ? focusId : all[0].id);
+  const cur = all.find((l) => l.id === sel) ?? all[0];
+  const ltv = (l: LineVM) => (l.collateralValue ? l.outstanding / l.collateralValue : 0);
+  const nearCall = (l: LineVM) => ltv(l) >= l.maintenanceLtv - 0.1;
+  const events = global.audit.filter((e) => e.requestId === cur.id);
+
+  return (
+    <div className="px-4 sm:px-8 py-8">
+      <PageHeader title="Active credit" description="Credit lines after underwriting: documentation, available credit and collateral coverage." />
+      <TableContainer title="Credit lines" description="Loan-to-value (LTV) = outstanding balance ÷ collateral market value.">
+        <div className="overflow-x-auto">
+          <Table aria-label="Credit lines" size="lg" className="min-w-[1040px]">
+            <TableHead>
+              <TableRow>
+                <TableHeader>Client and line</TableHeader>
+                <TableHeader className="num">Approved credit limit</TableHeader>
+                <TableHeader className="num">Outstanding balance</TableHeader>
+                <TableHeader className="num">Available credit</TableHeader>
+                <TableHeader className="num">Collateral market value</TableHeader>
+                <TableHeader className="num">LTV</TableHeader>
+                <TableHeader>Documents</TableHeader>
+                <TableHeader>Monitoring</TableHeader>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {all.map((l) => {
+                const acked = global.acknowledgedAlerts.includes(l.id);
+                const docsOpen = l.docs.filter((d) => d.status !== 'Complete').length;
+                return (
+                  <TableRow key={l.id} isSelected={sel === l.id}>
+                    <TableCell>
+                      <Button kind="ghost" size="sm" className="!px-0" onClick={() => setSel(l.id)} aria-pressed={sel === l.id}>{l.client}</Button>
+                      <div className="t-helper-01 text-[var(--cds-text-secondary)]">{l.id}</div>
+                    </TableCell>
+                    <TableCell className="num"><Money value={l.limit} /></TableCell>
+                    <TableCell className="num"><Money value={l.outstanding} /></TableCell>
+                    <TableCell className="num font-semibold"><Money value={l.limit - l.outstanding} /></TableCell>
+                    <TableCell className="num"><Money value={l.collateralValue} /></TableCell>
+                    <TableCell className="num">{fmtPct(ltv(l), 1)}</TableCell>
+                    <TableCell>{docsOpen ? <Tag tone="warning">{docsOpen} outstanding</Tag> : <Tag tone="success">Complete</Tag>}</TableCell>
+                    <TableCell>{nearCall(l) ? <Tag tone={acked ? 'neutral' : 'error'}>{acked ? 'Alert acknowledged' : 'LTV alert'}</Tag> : <Tag tone="success">Within limits</Tag>}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </TableContainer>
+
+      <section aria-label={`Detail for ${cur.client}`} className="bg-[var(--cds-layer-01)] mt-8">
+        <div className="px-6 py-5 border-b border-[var(--cds-border-subtle-01)] flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="t-heading-03">{cur.client}</h2>
+            <p className="t-helper-01 text-[var(--cds-text-secondary)]">{cur.id} · Approved {cur.approvedOn}</p>
+          </div>
+          {cur.scenarioId && <Button kind="ghost" size="sm" onClick={() => onRoute({ page: 'request', id: cur.scenarioId!, section: 'review' })}>View origination record</Button>}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 lg:divide-x divide-[var(--cds-border-subtle-01)]">
+          <div className="px-6 py-6">
+            <h3 className="t-heading-02 mb-3">Credit</h3>
+            <dl className="space-y-2 t-body-01">
+              <div className="flex justify-between"><dt className="text-[var(--cds-text-secondary)]">Approved credit limit</dt><dd><Money value={cur.limit} /></dd></div>
+              <div className="flex justify-between"><dt className="text-[var(--cds-text-secondary)]">Outstanding balance</dt><dd><Money value={cur.outstanding} /></dd></div>
+              <div className="flex justify-between font-semibold"><dt>Available credit</dt><dd><Money value={cur.limit - cur.outstanding} /></dd></div>
+            </dl>
+            <h3 className="t-heading-02 mt-6 mb-2">Collateral coverage</h3>
+            <div className="relative h-2 bg-[var(--cds-border-subtle-01)]" role="img" aria-label={`LTV ${fmtPct(ltv(cur), 1)}; maintenance threshold ${fmtPct(cur.maintenanceLtv)}`}>
+              <div className={cx('h-full', nearCall(cur) ? 'bg-[var(--cds-support-error)]' : 'bg-[var(--cds-interactive)]')} style={{ width: `${Math.min(ltv(cur), 1) * 100}%` }} />
+              <div className="absolute -top-1 h-4 w-0.5 bg-[var(--cds-text-primary)]" style={{ left: `${cur.maintenanceLtv * 100}%` }} />
+            </div>
+            <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-2">LTV {fmtPct(ltv(cur), 1)}. Maintenance threshold {fmtPct(cur.maintenanceLtv)}.</p>
+            {nearCall(cur) && (
+              global.acknowledgedAlerts.includes(cur.id) ? (
+                <InlineNotification kind="info" lowContrast hideCloseButton className="!max-w-none mt-4" title="Alert acknowledged" subtitle="Client outreach is scheduled." />
+              ) : (
+                <ActionableNotification
+                  kind="error"
+                  lowContrast
+                  inline
+                  hideCloseButton
+                  className="!max-w-none mt-4"
+                  title="LTV near maintenance threshold"
+                  subtitle={`LTV is ${fmtPct(ltv(cur), 1)}, within 10 percentage points of the ${fmtPct(cur.maintenanceLtv)} threshold.`}
+                  actionButtonLabel="Acknowledge and schedule outreach"
+                  onActionButtonClick={() => { setGlobal((g) => ({ ...g, acknowledgedAlerts: [...g.acknowledgedAlerts, cur.id] })); log('Collateral alert acknowledged', 'Client outreach scheduled', cur.id); }}
+                />
+              )
+            )}
+          </div>
+          <div className="px-6 py-6">
+            <h3 className="t-heading-02 mb-3">Collateral monitoring</h3>
+            <Table size="sm" aria-label="Collateral monitoring">
+              <TableHead><TableRow><TableHeader>Account</TableHeader><TableHeader className="num">Market value</TableHeader><TableHeader className="num">30-day change</TableHeader></TableRow></TableHead>
+              <TableBody>
+                {cur.collateral.map((c) => (
+                  <TableRow key={c.account}>
+                    <TableCell>{c.account}</TableCell>
+                    <TableCell className="num"><Money value={c.value} /></TableCell>
+                    <TableCell className={cx('num', c.change30d < -0.05 && 'text-[var(--cds-text-error)] font-semibold')}>{c.change30d === 0 ? '—' : `${c.change30d > 0 ? '+' : ''}${(c.change30d * 100).toFixed(1)}%`}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="px-6 py-6">
+            <h3 className="t-heading-02 mb-3">Documentation</h3>
+            <ul className="space-y-2 t-body-01">
+              {cur.docs.map((d) => (
+                <li key={d.name} className="flex items-center justify-between gap-3">
+                  <span>{d.name}</span>
+                  <Tag tone={d.status === 'Complete' ? 'success' : d.status === 'Pending signature' ? 'warning' : 'error'}>{d.status}</Tag>
+                </li>
+              ))}
+            </ul>
+            {cur.docs.some((d) => d.status !== 'Complete') && (
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Button kind="tertiary" size="sm" onClick={() => log('Document reminder sent', 'Reminder sent to the client', cur.id)}>Send document reminder</Button>
+                {cur.scenarioId && <Button kind="ghost" size="sm" onClick={() => setConfirmSign(cur.id)}>Simulate signatures</Button>}
+              </div>
+            )}
+            <h3 className="t-heading-02 mt-6 mb-2">Activity</h3>
+            <ul className="space-y-1 t-helper-01 text-[var(--cds-text-secondary)] max-h-36 overflow-y-auto">
+              {events.length === 0 && <li>No activity recorded.</li>}
+              {events.map((e, i) => <li key={i}>{e.at} · {e.user} · {e.event}: {e.detail}</li>)}
+            </ul>
+          </div>
+        </div>
+      </section>
+      <Modal
+        open={!!confirmSign}
+        size="xs"
+        modalHeading="Simulate document signatures?"
+        primaryButtonText="Simulate signatures"
+        secondaryButtonText="Cancel"
+        onRequestClose={() => setConfirmSign(null)}
+        onRequestSubmit={() => { const id = confirmSign!; setGlobal((g) => ({ ...g, signedLines: [...g.signedLines, id] })); log('Documents signed (simulated)', 'Credit agreement and pledge agreement marked complete', id); setConfirmSign(null); }}
+      >
+        <p className="t-body-01">Demo action. This marks the credit agreement and the pledge and control agreement as signed for demonstration purposes.</p>
+      </Modal>
+    </div>
+  );
+}

@@ -1,0 +1,115 @@
+// IBM Carbon (v11) for the AFTER experience only.
+//
+// Scoping: Carbon's global reset, @font-face, <body> and default-type output are
+// disabled so nothing leaks into the preserved BEFORE application. Component
+// styles are class-based (.cds--*) and theme tokens are emitted only under
+// .sbl-after, so they apply exclusively inside the redesigned workspace.
+
+@use 'sass:map';
+@use '@carbon/react/scss/config' with (
+  $css--reset: false,
+  $css--font-face: false,
+  $css--body: false,
+  $css--default-type: false
+);
+@use '@carbon/react/scss/themes';
+@use '@carbon/react/scss/theme' as theme;
+@use '@carbon/react/scss/type';
+// Contextual layout tokens (--cds-layout-*) used for control heights and density.
+// Emits only --cds-* custom properties and .cds--layout classes — no element styles.
+@use '@carbon/react/scss/layout';
+
+@use '@carbon/react/scss/components/button';
+@use '@carbon/react/scss/components/text-input';
+@use '@carbon/react/scss/components/text-area';
+@use '@carbon/react/scss/components/select';
+@use '@carbon/react/scss/components/checkbox';
+@use '@carbon/react/scss/components/radio-button';
+@use '@carbon/react/scss/components/form';
+@use '@carbon/react/scss/components/tag';
+@use '@carbon/react/scss/components/data-table';
+@use '@carbon/react/scss/components/notification';
+@use '@carbon/react/scss/components/modal';
+@use '@carbon/react/scss/components/ui-shell';
+@use '@carbon/react/scss/components/search';
+@use '@carbon/react/scss/components/accordion';
+@use '@carbon/react/scss/components/progress-indicator';
+@use '@carbon/react/scss/components/content-switcher';
+@use '@carbon/react/scss/components/link';
+@use '@carbon/react/scss/components/structured-list';
+@use '@carbon/react/scss/components/toggle';
+@use '@carbon/react/scss/components/tile';
+@use '@carbon/react/scss/components/stack';
+@use '@carbon/react/scss/components/overflow-menu';
+@use '@carbon/react/scss/components/popover';
+@use '@carbon/react/scss/components/toggletip';
+@use '@carbon/react/scss/components/list-box';
+@use '@carbon/react/scss/components/inline-loading';
+
+// PNC-inspired adaptation of the Carbon White theme: interactive and focus
+// tokens move to the bank's action blue (#0066CC, 5.6:1 on white — WCAG AA),
+// everything else stays on Carbon's gray scale and support palette.
+$pnc-white: map.merge(
+  themes.$white,
+  (
+    interactive: #0066cc,
+    focus: #0066cc,
+    focus-inset: #ffffff,
+    border-interactive: #0066cc,
+    button-primary: #0066cc,
+    button-primary-hover: #0057ad,
+    button-primary-active: #003f7d,
+    button-tertiary: #0066cc,
+    button-tertiary-hover: #0057ad,
+    button-tertiary-active: #003f7d,
+    link-primary: #0066cc,
+    link-primary-hover: #00478f,
+    link-secondary: #00478f,
+    icon-interactive: #0066cc,
+    highlight: #d6e9ff,
+    background-brand: #0066cc,
+  )
+);
+
+.sbl-after {
+  @include theme.theme($pnc-white);
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--cds-text-primary);
+  background: var(--cds-background);
+  -webkit-font-smoothing: antialiased;
+
+  // Carbon productive type set as utility classes for headings and body copy.
+  .t-heading-05 { @include type.type-style('heading-05'); }
+  .t-heading-04 { @include type.type-style('heading-04'); }
+  .t-heading-03 { @include type.type-style('heading-03'); }
+  .t-heading-02 { @include type.type-style('heading-02'); }
+  .t-heading-01 { @include type.type-style('heading-01'); }
+  .t-body-01 { @include type.type-style('body-01'); }
+  .t-body-compact-01 { @include type.type-style('body-compact-01'); }
+  .t-label-01 { @include type.type-style('label-01'); }
+  .t-helper-01 { @include type.type-style('helper-text-01'); }
+  .t-code { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.875rem; }
+
+  // The UI shell header is fixed in Carbon; inside the demo frame it flows.
+  .cds--header { position: relative; inset: auto; }
+  // The user panel anchors under this header (not to the viewport top) so it never covers header controls.
+  .cds--header-panel { position: absolute; inset-block-start: 100%; block-size: auto; max-block-size: calc(100vh - 6rem); overflow-y: auto; border-inline-start: 1px solid var(--cds-border-subtle-01); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2); }
+
+  // Tailwind's preflight sets button/input fonts to inherit; Carbon controls set their own.
+  .cds--btn, .cds--text-input, .cds--select-input, .cds--search-input, .cds--text-area { font-family: inherit; }
+
+  // Multi-line cells (name + identifier) need vertical padding in lg tables.
+  .cds--data-table td { padding-block: 0.625rem; }
+
+  // Links on the selected-row background need the darker link token for 4.5:1 contrast.
+  .cds--data-table--selected .cds--btn--ghost, .cds--data-table tr.cds--data-table--selected .cds--link { color: var(--cds-link-secondary); }
+
+  // Tabular numerals for all financial figures.
+  .num, td.num, th.num { font-variant-numeric: tabular-nums; text-align: right; }
+}
+
+// Carbon modals render through a portal at <body>; apply the same theme there.
+.cds--modal.sbl-after-modal {
+  @include theme.theme($pnc-white);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}

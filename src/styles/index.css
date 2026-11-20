@@ -1,0 +1,8 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+/* Demo: the baseline app's full-viewport layouts fill the frame below the demo bar. */
+.demo-frame .h-screen { height: 100%; }
+.demo-frame .min-h-screen { min-height: 100%; }
+.demo-frame .max-h-screen { max-height: 100%; }

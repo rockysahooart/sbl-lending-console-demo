@@ -1,0 +1,10 @@
+{
+  "description": "This banker-facing dashboard streamlines small business loan management, providing clear visibility into application records for efficient decision-making.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
