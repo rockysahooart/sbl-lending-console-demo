@@ -106,17 +106,27 @@ export function KV({ label, value, mono }: { label: string; value: ReactNode; mo
 }
 
 /** A section within the white content layer: heading + body, separated by a 1px rule. */
-export function Panel({ title, children, right, id, description }: { title: string; children: ReactNode; right?: ReactNode; id?: string; description?: ReactNode }) {
+/** Task type tells the associate what the section asks of them. */
+export type Task = 'Review' | 'Confirm' | 'Enter' | 'Ask the client' | 'Select' | 'Reference' | 'Certify';
+
+/** Content width inside the middle workspace: forms 900px, structured records 1120px, tables full width. */
+export type Width = 'form' | 'record' | 'full';
+export const WIDTH: Record<Width, string> = { form: 'max-w-[900px]', record: 'max-w-[1120px]', full: '' };
+
+export function Panel({ title, children, right, id, description, task, width = 'record' }: { title: string; children: ReactNode; right?: ReactNode; id?: string; description?: ReactNode; task?: Task; width?: Width }) {
   return (
-    <section aria-labelledby={id} className="py-8 first:pt-0 border-b border-[var(--cds-border-subtle-00)] last:border-0 last:pb-0">
+    <section aria-labelledby={id} className="pt-8 first:pt-0 group/panel">
+      <div className={cx(WIDTH[width], 'pb-8 border-b border-[var(--cds-border-subtle-00)] group-last/panel:border-0 group-last/panel:pb-0')}>
       <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
         <div>
-          <h3 id={id} className="t-heading-03">{title}</h3>
+          {task && <p className="t-label-01 text-[var(--cds-text-secondary)] mb-1">{task}</p>}
+          <h3 id={id} tabIndex={-1} className="t-heading-03 focus:outline-none">{title}</h3>
           {description && <p className="t-body-01 text-[var(--cds-text-secondary)] mt-1 max-w-3xl">{description}</p>}
         </div>
         {right}
       </div>
       {children}
+      </div>
     </section>
   );
 }

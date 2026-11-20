@@ -27,12 +27,12 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
   const target = rows.find((r) => r.key === confirmFor);
 
   return (
-    <div className="px-4 sm:px-8 py-8">
-      <PageHeader title="Underwriting" description="Requests awaiting or holding an underwriting decision. Each request stays linked to its origination record." />
+    <div className="px-4 sm:px-8 py-8 max-w-[1920px]">
+      <PageHeader title="Underwriting" description="Credit Underwriting owns these decisions. You’re notified when a decision or condition needs your response." />
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_440px] gap-6 items-start">
         <TableContainer title="Requests in underwriting">
           <div className="overflow-x-auto">
-            <Table aria-label="Requests in underwriting" size="lg" className="min-w-[640px]">
+            <Table aria-label="Requests in underwriting" size="lg" className="min-w-[860px]">
               <TableHead>
                 <TableRow>
                   <TableHeader>Request</TableHeader>
@@ -40,6 +40,7 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
                   <TableHeader className="num">Estimated borrowing power</TableHeader>
                   <TableHeader>Submitted</TableHeader>
                   <TableHeader>Status</TableHeader>
+                  <TableHeader>Your next step</TableHeader>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -53,6 +54,7 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
                     <TableCell className="num"><Money value={r.power} /></TableCell>
                     <TableCell>{r.submitted}</TableCell>
                     <TableCell>{r.status === 'approved' ? <Tag tone="success">Approved</Tag> : <Tag tone="info">Under review</Tag>}</TableCell>
+                    <TableCell>{r.status === 'approved' ? <span className="t-body-01 font-semibold">Monitor the credit line</span> : <span className="t-body-01 text-[var(--cds-text-secondary)]">None — awaiting decision</span>}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -63,9 +65,14 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
           <section aria-label={`Underwriting detail for ${cur.client}`} className="bg-[var(--cds-layer-01)] p-6 xl:sticky xl:top-6">
             <h2 className="t-heading-03">{cur.client}</h2>
             <p className="t-helper-01 text-[var(--cds-text-secondary)]">{cur.key}</p>
+            <div className="mt-5 bg-[var(--cds-background)] px-4 py-3 border-l-[3px] border-[var(--cds-interactive)]">
+              <p className="t-label-01 text-[var(--cds-text-secondary)]">{cur.status === 'approved' ? 'Decision' : 'Waiting on'}</p>
+              <p className="t-heading-02 mt-0.5">{cur.status === 'approved' ? 'Approved by Credit Underwriting' : 'Credit Underwriting · decision due in 2 business days'}</p>
+              <p className="t-body-01 mt-1">{cur.status === 'approved' ? 'Next: monitor documents and collateral in Active credit.' : 'No action is needed from you. Conditions, if any, will appear here.'}</p>
+            </div>
             <dl className="grid grid-cols-2 gap-4 mt-5">
               <KV label="Underwriter" value="Credit Underwriting" />
-              <KV label="Service level" value={cur.status === 'approved' ? 'Decision issued' : 'Decision due in 2 business days'} />
+              <KV label="Submitted" value={cur.submitted ? cur.submitted.split(',')[0] : '—'} mono />
               <KV label="Requested amount" value={fmtMoney(cur.requested)} mono />
               <KV label="Estimated borrowing power" value={fmtMoney(cur.power)} mono />
             </dl>
@@ -158,11 +165,38 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
   const ltv = (l: LineVM) => (l.collateralValue ? l.outstanding / l.collateralValue : 0);
   const nearCall = (l: LineVM) => ltv(l) >= l.maintenanceLtv - 0.1;
   const events = global.audit.filter((e) => e.requestId === cur.id);
+  // Attention: an unacknowledged LTV alert outranks outstanding documents.
+  const attention = all.flatMap((l) => {
+    const out: { key: string; line: LineVM; tone: 'error' | 'warning'; tag: string; text: string; action: string; rank: number }[] = [];
+    if (nearCall(l) && !global.acknowledgedAlerts.includes(l.id)) out.push({ key: `${l.id}-ltv`, line: l, tone: 'error', tag: 'LTV alert', text: `LTV is ${fmtPct(ltv(l), 1)}, ${((l.maintenanceLtv - ltv(l)) * 100).toFixed(1)} points below the ${fmtPct(l.maintenanceLtv)} maintenance threshold. Contact the client about adding collateral or paying down the balance.`, action: 'Review LTV alert', rank: 0 });
+    const docs = l.docs.filter((d) => d.status !== 'Complete');
+    if (docs.length) out.push({ key: `${l.id}-docs`, line: l, tone: 'warning', tag: `${docs.length} document${docs.length > 1 ? 's' : ''} outstanding`, text: docs.map((d) => `${d.name} (${d.status.toLowerCase()})`).join(', ') + '.', action: 'Follow up on documents', rank: 1 });
+    return out;
+  }).sort((a, b) => a.rank - b.rank);
 
   return (
-    <div className="px-4 sm:px-8 py-8">
-      <PageHeader title="Active credit" description="Credit lines after underwriting: documentation, available credit and collateral coverage." />
-      <TableContainer title="Credit lines" description="Loan-to-value (LTV) = outstanding balance ÷ collateral market value.">
+    <div className="px-4 sm:px-8 py-8 max-w-[1920px]">
+      <PageHeader title="Active credit" description="Approved credit lines you service. Lines that need attention come first." />
+      <section aria-labelledby="attn-h" className="mb-10">
+        <h2 id="attn-h" className="t-heading-03">Needs attention <span className="tabular-nums">({attention.length})</span></h2>
+        {attention.length === 0 ? (
+          <p className="t-body-01 mt-2">All lines are within limits and documentation is complete.</p>
+        ) : (
+          <ul className="mt-3 border-t border-[var(--cds-border-strong-01)]">
+            {attention.map((a) => (
+              <li key={a.key} className="grid grid-cols-1 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)_auto] gap-x-8 gap-y-2 items-center py-4 border-b border-[var(--cds-border-subtle-00)]">
+                <div><p className="t-body-01 !font-semibold">{a.line.client}</p><p className="t-helper-01 text-[var(--cds-text-secondary)]">{a.line.id}</p></div>
+                <div className="flex items-start gap-3">
+                  <Tag tone={a.tone}>{a.tag}</Tag>
+                  <p className="t-body-01">{a.text}</p>
+                </div>
+                <Button kind={a.tone === 'error' ? 'primary' : 'tertiary'} size="sm" onClick={() => { setSel(a.line.id); requestAnimationFrame(() => { const el = document.getElementById('credit-detail'); el?.scrollIntoView({ block: 'start' }); el?.focus({ preventScroll: true }); }); }} aria-label={`${a.action}: ${a.line.client}`}>{a.action}</Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <TableContainer title="All credit lines" description="Loan-to-value (LTV) = outstanding balance ÷ collateral market value. A maintenance call may be issued at the maintenance threshold.">
         <div className="overflow-x-auto">
           <Table aria-label="Credit lines" size="lg" className="min-w-[1040px]">
             <TableHead>
@@ -191,7 +225,10 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
                     <TableCell className="num"><Money value={l.outstanding} /></TableCell>
                     <TableCell className="num font-semibold"><Money value={l.limit - l.outstanding} /></TableCell>
                     <TableCell className="num"><Money value={l.collateralValue} /></TableCell>
-                    <TableCell className="num">{fmtPct(ltv(l), 1)}</TableCell>
+                    <TableCell className="num">
+                      <div className={cx(nearCall(l) && 'text-[var(--cds-text-error)] font-semibold')}>{fmtPct(ltv(l), 1)}</div>
+                      <div className="t-helper-01 text-[var(--cds-text-secondary)]">{((l.maintenanceLtv - ltv(l)) * 100).toFixed(1)} pts below {fmtPct(l.maintenanceLtv)} threshold</div>
+                    </TableCell>
                     <TableCell>{docsOpen ? <Tag tone="warning">{docsOpen} outstanding</Tag> : <Tag tone="success">Complete</Tag>}</TableCell>
                     <TableCell>{nearCall(l) ? <Tag tone={acked ? 'neutral' : 'error'}>{acked ? 'Alert acknowledged' : 'LTV alert'}</Tag> : <Tag tone="success">Within limits</Tag>}</TableCell>
                   </TableRow>
@@ -202,7 +239,7 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
         </div>
       </TableContainer>
 
-      <section aria-label={`Detail for ${cur.client}`} className="mt-10 border-t-2 border-[var(--cds-interactive)]">
+      <section id="credit-detail" tabIndex={-1} aria-label={`Detail for ${cur.client}`} className="mt-10 border-t-2 border-[var(--cds-interactive)] focus:outline-none scroll-mt-4">
         <div className="py-5 border-b border-[var(--cds-border-subtle-00)] flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="t-heading-03">{cur.client}</h2>

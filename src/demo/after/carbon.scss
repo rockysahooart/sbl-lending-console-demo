@@ -137,7 +137,7 @@ $pnc-white: map.merge(
     border-block-start: 0;
     border-block-end: 1px solid var(--cds-border-subtle-00);
   }
-  .cds--data-table tbody tr:hover, .cds--data-table tbody tr.cds--data-table--selected { background: var(--cds-background); }
+  .cds--data-table tbody, .cds--data-table tbody tr:hover, .cds--data-table tbody tr.cds--data-table--selected { background: var(--cds-background); }
   .cds--data-table tbody tr:hover td { background: var(--cds-background-hover); border-block-end-color: var(--cds-border-subtle-00); }
 
   // Numeric columns: right-aligned headers over right-aligned, tabular figures.
@@ -152,6 +152,26 @@ $pnc-white: map.merge(
   .cds--data-table tr.cds--data-table--selected:hover td,
   .cds--data-table tr.is-selected-row:hover td { background: var(--cds-background-hover); }
   .cds--data-table tr.cds--data-table--selected .cds--btn--ghost { color: var(--cds-link-primary); font-weight: 600; }
+}
+
+.sbl-after {
+  // Pipeline: attention groups read as section headings inside one table.
+  .pipeline-table tbody tr.group-row td,
+  .pipeline-table tbody tr.group-row:hover td {
+    background: var(--cds-background);
+    padding-block: 1.5rem 0.5rem;
+    border-block-end: 1px solid var(--cds-border-strong-01);
+  }
+  .pipeline-table tbody:first-of-type tr.group-row td { padding-block-start: 1rem; }
+  .pipeline-table td { vertical-align: top; }
+  // Tertiary buttons use the PNC-adapted interactive blue (5.6:1 on white, 4.9:1 on row hover).
+  .cds--btn--tertiary:not(:hover):not(:active) { color: var(--cds-link-primary); border-color: var(--cds-link-primary); }
+  // Status tags carry full wording (e.g. screening results); never truncate them.
+  .cds--tag { max-inline-size: none; }
+  .cds--tag__label { overflow: visible; text-overflow: clip; }
+  // Collateral totals: a strong rule separates the sum from the accounts.
+  .cds--data-table tbody tr.totals-row td, .cds--data-table tbody tr.totals-row:hover td { background: var(--cds-background); border-block-start: 1px solid var(--cds-border-strong-01); border-block-end: 0; box-shadow: none; }
+  .pipeline-table td .cds--btn { margin-block-start: -0.25rem; }
 }
 
 // Carbon modals render through a portal at <body>; apply the same theme there.

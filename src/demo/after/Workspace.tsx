@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Accordion,
   AccordionItem,
@@ -28,7 +28,8 @@ import { usePersistentState } from '../../app/state/ConsoleStore';
 import { ASSET_CLASS_LABEL, PEOPLE, fmtMoney, fmtPct, personById, type Person, type ScenarioId } from '../data';
 import { reviewBounds } from '../engine';
 import { ATTESTATIONS, nowStamp, useAfterRequest, useAudit, type RequestModel, type Section, type YN } from './state';
-import { Btn, Check, KV, Money, Panel, RadioGroup, SelectField, Tag, TextField, cx, type Tone } from './ui';
+import { ANCHOR, guidance, reviewUpside } from './guidance';
+import { Btn, Check, KV, Money, Panel, RadioGroup, SelectField, Tag, TextField, WIDTH, cx, type Tone, type Width } from './ui';
 import type { Route } from './AfterApp';
 
 const SECTIONS: { key: Section; label: string }[] = [
@@ -39,6 +40,25 @@ const SECTIONS: { key: Section; label: string }[] = [
 ];
 
 const yn = [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }];
+
+/*
+ * Content widths inside the middle workspace (the column itself always fills the space
+ * between navigation and the status panel). Each content type stops growing where more
+ * width would separate labels, values and controls:
+ *   form    900px  — inputs, questions, attestations
+ *   record  1120px — structured client information and summaries
+ *   full    none   — data tables, collateral inventory, evaluation
+ */
+
+function focusAnchor(id: string) {
+  // After the section renders and the workspace scroll resets.
+  window.setTimeout(() => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ block: 'start', behavior: 'auto' });
+    (el as HTMLElement).focus({ preventScroll: true });
+  }, 60);
+}
 
 export function Workspace({ route, onRoute }: { route: { page: 'request'; id: ScenarioId; section: Section } | { page: 'confirmation'; id: ScenarioId }; onRoute: (r: Route) => void }) {
   const m = useAfterRequest(route.id);
@@ -53,7 +73,17 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
     if (route.page === 'request' && !req.visited.includes(section)) update({ visited: [...req.visited, section], section });
   }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const go = (sec: Section) => onRoute({ page: 'request', id: route.id, section: sec });
+  const pendingAnchor = useRef<string | null>(null);
+  /** Go to a section and bring the place where the item is resolved into view (focus moves to its heading). */
+  const go = (sec: Section, anchor?: string) => {
+    pendingAnchor.current = anchor ?? null;
+    if (sec === section && anchor) focusAnchor(anchor);
+    else onRoute({ page: 'request', id: route.id, section: sec });
+  };
+  useEffect(() => {
+    const a = pendingAnchor.current;
+    if (a) { pendingAnchor.current = null; focusAnchor(a); }
+  }, [section]);
   if (route.page === 'confirmation') return <Confirmation m={m} onRoute={onRoute} />;
   const locked = req.status !== 'draft';
 
@@ -63,6 +93,7 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
       {locked && (
         <InlineNotification kind="info" lowContrast hideCloseButton className="!max-w-none mb-6" title="Submitted to underwriting" subtitle={`Submitted ${req.submittedAt}. This request is read-only.`} />
       )}
+      {/* Working width follows the task: forms stay at a readable width, the collateral inventory uses the space. */}
       <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[224px_minmax(0,1fr)_340px] gap-8 items-start">
         <nav aria-label="Request sections" className="lg:sticky lg:top-6">
           <ProgressIndicator vertical currentIndex={SECTIONS.findIndex((x) => x.key === section)} onChange={(i: number) => go(SECTIONS[i].key)} spaceEqually={false}>
@@ -116,9 +147,9 @@ function RequestHeader({ m }: { m: RequestModel }) {
   );
 }
 
-function NextBar({ label, onNext }: { label: string; onNext: () => void }) {
+function NextBar({ label, onNext, width = 'record' }: { label: string; onNext: () => void; width?: Width }) {
   return (
-    <div className="mt-8 py-4 flex items-center justify-between gap-4 border-t border-[var(--cds-border-subtle-01)]">
+    <div className={cx('mt-8 py-4 flex items-center justify-between gap-4 border-t border-[var(--cds-border-subtle-01)]', WIDTH[width])}>
       <p className="t-helper-01 text-[var(--cds-text-secondary)]">Changes are saved automatically.</p>
       <Button renderIcon={ArrowRight} onClick={onNext}>{label}</Button>
     </div>
@@ -175,6 +206,15 @@ function MaskedId({ person, requestId }: { person: Person; requestId: string }) 
   );
 }
 
+function RecordGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <h4 className="t-heading-01 pb-2 mb-3 border-b border-[var(--cds-border-subtle-00)]">{title}</h4>
+      <dl className="space-y-3">{children}</dl>
+    </div>
+  );
+}
+
 function Screening({ date = '11/18/2025' }: { date?: string }) {
   return (
     <span className="inline-flex flex-wrap gap-2">
@@ -191,21 +231,29 @@ function ClientSection({ m, onNext }: { m: RequestModel; onNext: () => void }) {
   const [reported, setReported] = useState(false);
   return (
     <div>
-      <Panel id="client-record" title="Client record" description="From the client record of 11/18/2025. Fields are read-only here." right={<Screening />}>
-        <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-5">
-          <KV label="Legal name" value={p.name} />
-          <KV label="Date of birth" value={p.dob} mono />
-          <KV label="Social Security number" value={<MaskedId person={p} requestId={s.requestId} />} />
-          <KV label="MDM ID / Power ID" value={`${p.mdmId} / ${p.powerId}`} mono />
-          <KV label="Phone" value={p.phone} />
-          <KV label="Email" value={p.email} />
-          <KV label="Address" value={`${p.address1}, ${p.city}, ${p.state} ${p.zip}`} />
-          <KV label="Client since" value={p.customerSince} mono />
-          <KV label="Identification" value={<span className="inline-flex flex-wrap items-center gap-2">{p.idType} {p.idNumber} <Tag tone="success">Valid until {p.idExpires}</Tag></span>} />
-          <KV label="Employment" value={`${p.employmentStatus}, ${p.employmentTitle}`} />
-          <KV label="Citizenship" value={p.citizenship} />
-          <KV label="Marital status" value={p.maritalStatus === 'Married' ? 'Married' : 'Unmarried'} />
-        </dl>
+      <Panel id="client-record" task="Review" title="Client record" description="From the client record of 11/18/2025. Read-only; request a correction if anything is out of date." right={<Screening />}>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-x-8 gap-y-6">
+          <RecordGroup title="Identity">
+            <KV label="Legal name" value={p.name} />
+            <KV label="Date of birth" value={p.dob} mono />
+            <KV label="Social Security number" value={<MaskedId person={p} requestId={s.requestId} />} />
+          </RecordGroup>
+          <RecordGroup title="Identification">
+            <KV label="Document" value={`${p.idType} ${p.idNumber}`} />
+            <KV label="Status" value={<Tag tone="success">Valid until {p.idExpires}</Tag>} />
+            <KV label="Citizenship" value={p.citizenship} />
+          </RecordGroup>
+          <RecordGroup title="Contact">
+            <KV label="Phone" value={p.phone} />
+            <KV label="Email" value={p.email} />
+            <KV label="Address" value={`${p.address1}, ${p.city}, ${p.state} ${p.zip}`} />
+          </RecordGroup>
+          <RecordGroup title="Relationship">
+            <KV label="MDM ID / Power ID" value={`${p.mdmId} / ${p.powerId}`} mono />
+            <KV label="Client since" value={p.customerSince} mono />
+            <KV label="Employment" value={`${p.employmentStatus}, ${p.employmentTitle}`} />
+          </RecordGroup>
+        </div>
         <div className="mt-5">
           {reported ? (
             <InlineNotification kind="success" lowContrast hideCloseButton title="Correction request sent" subtitle="Client Data Maintenance will review the record. The current record remains in use." />
@@ -215,7 +263,7 @@ function ClientSection({ m, onNext }: { m: RequestModel; onNext: () => void }) {
         </div>
       </Panel>
 
-      <Panel id="app-type" title="Application type">
+      <Panel id="app-type" task="Confirm" width="form" title="Application type">
         {isEntity ? (
           <p className="t-body-01">Borrower: <b className="font-semibold">{s.entityName}</b>. Authorized signer: {p.name}.</p>
         ) : (
@@ -226,7 +274,7 @@ function ClientSection({ m, onNext }: { m: RequestModel; onNext: () => void }) {
       {req.appType === 'Joint' && <CoBorrowerPanel m={m} />}
 
       {needsOwners && (
-        <Panel id="owners" title={isEntity ? 'Beneficial ownership' : 'Trust ownership'} description={isEntity ? `Individuals owning 25% or more of ${s.entityName}, and the individual with significant control, from the entity record.` : 'Required because a trust account is pledged as collateral. Trustees and beneficial owners from the trust record.'}>
+        <Panel id="owners" task="Certify" title={isEntity ? 'Beneficial ownership' : 'Trust ownership'} description={isEntity ? `Individuals owning 25% or more of ${s.entityName}, and the individual with significant control, from the entity record.` : 'Required because a trust account is pledged as collateral. Trustees and beneficial owners from the trust record.'}>
           <Table size="md" aria-label="Owners">
             <TableHead>
               <TableRow>
@@ -256,16 +304,18 @@ function ClientSection({ m, onNext }: { m: RequestModel; onNext: () => void }) {
         </Panel>
       )}
 
-      <Panel id="compliance" title="Compliance questions" description="Only questions not already on file. No answers are preselected.">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+      <Panel id="compliance" task="Ask the client" width="form" title="Compliance questions" description="Only questions not already on file. No answers are preselected.">
+        <div className="max-w-[760px]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 max-w-[640px]">
           <SelectField label="Is the client a politically exposed person?" options={['Yes', 'No']} value={req.pep} onChange={(v) => update({ pep: v as YN })} />
-          <SelectField label="Marital status" options={['Married', 'Unmarried', 'Separated']} value={req.marital} onChange={(v) => update({ marital: v })} helper="From the client record. Change only if the record is out of date." />
+          <SelectField label="Marital status" options={['Married', 'Unmarried', 'Separated']} value={req.marital} onChange={(v) => update({ marital: v })} helper="From the client record. Change only if out of date." />
         </div>
-        <div className="space-y-6">
+        <div className="space-y-8">
           <RadioGroup legend="Does the client sell, manufacture or distribute weapons, ammunition or components under a U.S. Government contract?" name="q1" value={req.q1} onChange={(v) => update({ q1: v as YN })} options={yn} />
           {req.q1 === 'Yes' && <TextField label="Describe the activity and the contracting agency" value={req.q1Explain} onChange={(v) => update({ q1Explain: v })} />}
           <RadioGroup legend="Will anyone other than the borrowers make loan payments?" name="q2" value={req.q2} onChange={(v) => update({ q2: v as YN })} options={yn} />
           <RadioGroup legend="Is the source of repayment inconsistent with the client’s profile or industry?" name="q3" value={req.q3} onChange={(v) => update({ q3: v as YN })} options={yn} />
+        </div>
         </div>
       </Panel>
       <NextBar label="Continue to collateral" onNext={onNext} />
@@ -293,7 +343,7 @@ function CoBorrowerPanel({ m }: { m: RequestModel }) {
     log('Identification updated', `${co!.name}: ID ${req.coIdUpdate.number}, valid until ${req.coIdUpdate.expires}`, s.requestId);
   };
   return (
-    <Panel id="co" title="Co-borrower">
+    <Panel id="co" task="Enter" width="record" title="Co-borrower">
       {!co ? (
         <div className="space-y-5">
           {household.length > 0 && (
@@ -319,7 +369,7 @@ function CoBorrowerPanel({ m }: { m: RequestModel }) {
       ) : (
         <div className="space-y-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 flex-1">
+            <dl className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-x-6 gap-y-4 flex-1">
               <KV label="Name" value={co.name} />
               <KV label="MDM ID / Power ID" value={`${co.mdmId} / ${co.powerId}`} mono />
               <KV label="Social Security number" value={<MaskedId person={co} requestId={s.requestId} />} />
@@ -376,8 +426,8 @@ function CollateralSection({ m, onNext }: { m: RequestModel; onNext: () => void 
   const [reviewing, setReviewing] = useState<string | null>(null);
   return (
     <div>
-      <Panel id="collateral" title="Collateral and evaluation" description="Accounts in the client relationship. Select the accounts to pledge; estimated borrowing power updates immediately.">
-        <dl className="grid grid-cols-2 min-[1440px]:grid-cols-4 gap-2 mb-8">
+      <Panel id="collateral" task="Select" width="full" title="Collateral and evaluation" description="Accounts in the client relationship. Select the accounts to pledge; estimated borrowing power updates immediately.">
+        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-8 max-w-[1120px]">
           {[
             ['Pledged market value', <Money key="a" value={ev.pledgedValue} />],
             ['Estimated borrowing power', <Money key="b" value={ev.total} />],
@@ -386,10 +436,11 @@ function CollateralSection({ m, onNext }: { m: RequestModel; onNext: () => void 
           ].map(([l, v]) => (
             <div key={l as string} className={cx('bg-[var(--cds-layer-01)] px-4 py-4', l === 'Estimated borrowing power' && 'shadow-[inset_0_2px_0_var(--cds-interactive)]')}>
               <dt className="t-label-01 text-[var(--cds-text-secondary)]">{l}</dt>
-              <dd className={cx('t-heading-04 tabular-nums mt-1', l === 'Estimated borrowing power' && 'font-semibold')}>{v}</dd>
+              <dd className={cx('text-[1.25rem] leading-7 min-[1440px]:text-[1.75rem] min-[1440px]:leading-9 tabular-nums mt-1', l === 'Estimated borrowing power' && 'font-semibold')}>{v}</dd>
             </div>
           ))}
         </dl>
+        <EvaluationStatement m={m} />
         <div className="overflow-x-auto">
           <Table aria-label="Collateral accounts" size="lg" className="min-w-[760px]">
             <TableHead>
@@ -447,6 +498,15 @@ function CollateralSection({ m, onNext }: { m: RequestModel; onNext: () => void 
                   </TableRow>,
                 ];
               })}
+              <TableRow className="totals-row">
+                <TableCell />
+                <TableCell><span className="font-semibold">Total pledged</span> <span className="t-helper-01 text-[var(--cds-text-secondary)]">({ev.rows.filter((r) => r.pledged).length} of {ev.rows.length} accounts)</span></TableCell>
+                <TableCell />
+                <TableCell className="num font-semibold"><Money value={ev.pledgedValue} /></TableCell>
+                <TableCell className="num">{ev.pledgedValue ? fmtPct(ev.total / ev.pledgedValue) : '—'}</TableCell>
+                <TableCell className="num font-semibold"><Money value={ev.total} /></TableCell>
+                <TableCell><span className="t-helper-01 text-[var(--cds-text-secondary)]">Estimated borrowing power</span></TableCell>
+              </TableRow>
             </TableBody>
           </Table>
         </div>
@@ -479,7 +539,38 @@ function CollateralSection({ m, onNext }: { m: RequestModel; onNext: () => void 
         </Accordion>
       </Panel>
       {reviewing && <ReviewModal m={m} accountId={reviewing} onClose={() => setReviewing(null)} />}
-      <NextBar label="Continue to loan structure" onNext={onNext} />
+      <NextBar label="Continue to loan structure" onNext={onNext} width="full" />
+    </div>
+  );
+}
+
+/** States the consequence of the current selection and the ways to close any gap. */
+function EvaluationStatement({ m }: { m: RequestModel }) {
+  const { ev, req, s } = m;
+  const margin = ev.total - req.requested;
+  const auto = ev.rows.filter((r) => r.status === 'auto').length;
+  const manual = ev.rows.filter((r) => r.status === 'review' || r.status === 'reviewed').length;
+  const upside = reviewUpside(m);
+  const review = ev.rows.find((r) => r.status === 'review');
+  return (
+    <div className="mb-8 max-w-[960px]">
+      <p className="t-body-01">
+        {margin >= 0 ? (
+          <><span className="font-semibold">Covers the request.</span> Estimated borrowing power is {fmtMoney(margin)} above the requested amount of {fmtMoney(req.requested)}.</>
+        ) : (
+          <><span className="font-semibold text-[var(--cds-text-error)]">{fmtMoney(-margin)} short of the requested amount.</span> The request can’t be submitted until estimated borrowing power reaches {fmtMoney(req.requested)}.</>
+        )}
+      </p>
+      {margin < 0 && (
+        <ul className="t-body-01 mt-2 list-disc pl-5 space-y-1">
+          {review && <li>Request a credit officer review of {review.account.name} {review.account.number}. A reviewed rate of up to {Math.round(reviewBounds.max * 100)}% could add up to {fmtMoney(upside)}.</li>}
+          {ev.rows.some((r) => !r.pledged && r.status !== 'ineligible') && <li>Pledge another eligible account.</li>}
+          <li>Reduce the requested amount in Loan structure.</li>
+        </ul>
+      )}
+      <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-3">
+        Automatic evaluation: {auto} account{auto === 1 ? '' : 's'} at standard advance rates. Manual evaluation: {manual ? `${manual} account${manual === 1 ? '' : 's'} by credit officer review` : 'none needed'}.{ev.ineligible ? ` Not eligible: ${ev.ineligible}.` : ''} {s.accounts.length} accounts in the relationship.
+      </p>
     </div>
   );
 }
@@ -526,8 +617,8 @@ function StructureSection({ m, onNext }: { m: RequestModel; onNext: () => void }
   const deposits = s.accounts.filter((a) => a.holdings.some((h) => h.assetClass === 'cash' || h.assetClass === 'liquid')).map((a) => a.number);
   return (
     <div>
-      <Panel id="amount" title="Amount and purpose">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <Panel id="amount" task="Enter" width="form" title="Amount and purpose">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-6">
           <TextField
             id="requested-amount"
             label="Requested amount (USD)"
@@ -557,8 +648,8 @@ function StructureSection({ m, onNext }: { m: RequestModel; onNext: () => void }
           )}
         </div>
       </Panel>
-      <Panel id="sources" title="Sources of wealth and repayment">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <Panel id="sources" task="Ask the client" width="form" title="Sources of wealth and repayment">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-6 max-w-[720px]">
           <SelectField label="Primary source of wealth" options={['Business Income', 'Investments', 'Real Estate', 'Inheritance']} value={req.wealth1} onChange={(v) => update({ wealth1: v })} />
           <SelectField label="Primary source of repayment" options={['Business Cash Flow', 'Personal Income', 'Investment Income']} value={req.repay1} onChange={(v) => update({ repay1: v })} />
           {req.showSecondary && (
@@ -572,7 +663,7 @@ function StructureSection({ m, onNext }: { m: RequestModel; onNext: () => void }
           {req.showSecondary ? 'Remove secondary sources' : 'Add secondary sources'}
         </Button>
       </Panel>
-      <Panel id="pricing" title="Pricing and booking">
+      <Panel id="pricing" task="Confirm" width="form" title="Pricing and booking">
         <RadioGroup legend="Pricing" name="pricing" value={req.pricing} onChange={(v) => update({ pricing: v as 'standard' | 'exception' })} options={[{ value: 'standard', label: 'Standard pricing (SOFR daily plus product spread)' }, { value: 'exception', label: 'Request a pricing exception' }]} />
         {req.pricing === 'exception' && (
           <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 mt-6">
@@ -580,7 +671,7 @@ function StructureSection({ m, onNext }: { m: RequestModel; onNext: () => void }
             <TextField label="Business justification" value={req.pricingWhy} onChange={(v) => update({ pricingWhy: v })} helper="Reviewed by Pricing. Approval is not guaranteed." />
           </div>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-6 mt-8">
           <SelectField label="Booking cost center" options={['Commercial Lending', 'Small Business Banking', 'Private Banking']} value={req.costCenter} onChange={(v) => update({ costCenter: v })} helper="From your banker profile." />
           <SelectField label="Is a sustainability review required?" options={['Yes', 'No']} value={req.sustainability} onChange={(v) => update({ sustainability: v as YN })} />
           <TextField label="Relationship manager memo" optional value={req.memo} onChange={(v) => update({ memo: v })} />
@@ -590,22 +681,23 @@ function StructureSection({ m, onNext }: { m: RequestModel; onNext: () => void }
           {req.ach && <div className="w-64"><SelectField label="Debit account" options={[...deposits, 'Other account on file']} value={req.achAccount} onChange={(v) => update({ achAccount: v })} /></div>}
         </div>
       </Panel>
-      <Panel id="terms" title="Product terms" description="Set by the product. Read-only.">
-        <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4">
+      <Panel id="terms" task="Reference" width="form" title="Product terms" description="Set by the product. Read-only.">
+        <dl className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-x-6 gap-y-4">
           <KV label="Product" value={s.product} />
           <KV label="Rate type and index" value="Variable, SOFR daily" />
           <KV label="Payment structure" value="Interest only" />
           <KV label="Credit action" value="New" />
         </dl>
       </Panel>
-      <NextBar label="Continue to review" onNext={onNext} />
+      <NextBar label="Continue to review" onNext={onNext} width="form" />
     </div>
   );
 }
 
 /* ------------------------------- 4. Review and submit ------------------------------- */
-function ReviewSection({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (s: Section) => void; onSubmitted: () => void }) {
+function ReviewSection({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (s: Section, anchor?: string) => void; onSubmitted: () => void }) {
   const { s, req, update, readiness, ev, co, setReq, role, log } = m;
+  const g = guidance(m);
   const { track, recordGaps } = useDemo();
   const { audit } = useAudit();
   const [, setSubmittedMap] = usePersistentState<Record<string, boolean>>('after:submitted', () => ({}));
@@ -639,30 +731,56 @@ function ReviewSection({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (s: Se
   const events = audit.filter((e) => e.requestId === s.requestId);
   return (
     <div>
-      <section aria-labelledby="readiness" className="pb-8 border-b border-[var(--cds-border-subtle-00)]">
-        <h3 id="readiness" tabIndex={-1} className="t-heading-03 mb-5">Submission readiness</h3>
+      <section aria-labelledby="readiness">
+        <div className="max-w-[1120px] pb-8 border-b border-[var(--cds-border-subtle-00)]">
+        <p className="t-label-01 text-[var(--cds-text-secondary)] mb-1">Resolve</p>
+        <h3 id="readiness" tabIndex={-1} className="t-heading-03 mb-5 focus:outline-none">Submission readiness</h3>
         {attempted && open.length > 0 && (
-          <InlineNotification kind="error" lowContrast hideCloseButton className="!max-w-none mb-5" title={`${open.length} item${open.length > 1 ? 's' : ''} must be resolved before submission`} subtitle="Select Resolve next to an item to go to the section where it is completed." />
+          <InlineNotification kind="error" lowContrast hideCloseButton className="!max-w-none mb-5" title={`${open.length} item${open.length > 1 ? 's' : ''} must be resolved before submission`} subtitle="Select Go to next to an item to open the place where it is completed." />
         )}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-          {groups.map((g) => (
-            <div key={g.key}>
-              <h4 className="t-heading-01 mb-2">{g.label}</h4>
-              <ul className="space-y-2">
-                {readiness.filter((r) => r.step === g.key).map((r) => (
-                  <li key={r.id} className="flex items-start gap-2 t-body-01">
-                    {r.done ? <CheckmarkFilled size={16} className="mt-0.5 flex-shrink-0 fill-[var(--cds-support-success)]" aria-hidden="true" /> : <WarningAltFilled size={16} className="mt-0.5 flex-shrink-0 fill-[var(--cds-support-warning)] [&_path:first-child]:fill-black" aria-hidden="true" />}
-                    <span className={r.done ? 'text-[var(--cds-text-secondary)]' : ''}>{r.label}<span className="sr-only">{r.done ? ', complete' : ', open'}</span></span>
-                    {!r.done && g.key !== 'review' && <Button kind="ghost" size="sm" className="ml-auto !min-h-0 !py-0" onClick={() => onGo(g.key)} aria-label={`Resolve: ${r.label}`}>Resolve</Button>}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+        <h4 className="t-heading-02 flex items-center gap-2">
+          {open.length ? <WarningAltFilled size={16} className="fill-[var(--cds-support-error)]" aria-hidden="true" /> : <CheckmarkFilled size={16} className="fill-[var(--cds-support-success)]" aria-hidden="true" />}
+          Blocking <span className="tabular-nums">({open.length})</span>
+          <span className="t-helper-01 text-[var(--cds-text-secondary)] font-normal">Must be resolved before submission</span>
+        </h4>
+        {open.length ? (
+          <ul className="mt-3 border-t border-[var(--cds-border-subtle-00)]">
+            {open.map((r) => (
+              <li key={r.id} className="flex items-center gap-4 py-2 border-b border-[var(--cds-border-subtle-00)] t-body-01">
+                <span className="flex-1">{r.label}<span className="t-helper-01 text-[var(--cds-text-secondary)] ml-2">{groups.find((g) => g.key === r.step)!.label}</span></span>
+                <Button kind="ghost" size="sm" onClick={() => onGo(r.step, ANCHOR[r.id])} aria-label={`Go to: ${r.label}`}>Go to</Button>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="t-body-01 mt-2">Nothing is blocking submission.</p>}
+        <h4 className="t-heading-02 flex items-center gap-2 mt-8">
+          <WarningAltFilled size={16} className="fill-[var(--cds-support-warning)] [&_path:first-child]:fill-black" aria-hidden="true" />
+          Warnings <span className="tabular-nums">({g.warnings.length})</span>
+          <span className="t-helper-01 text-[var(--cds-text-secondary)] font-normal">Review before submitting; they don’t block submission</span>
+        </h4>
+        {g.warnings.length ? (
+          <ul className="mt-3 border-t border-[var(--cds-border-subtle-00)]">
+            {g.warnings.map((w) => (
+              <li key={w.id} className="flex items-start gap-4 py-2 border-b border-[var(--cds-border-subtle-00)]">
+                <span className="flex-1"><span className="t-body-01 font-semibold block">{w.label}</span><span className="t-body-01">{w.detail}</span></span>
+                <Button kind="ghost" size="sm" onClick={() => onGo(w.section, w.anchor)} aria-label={`Go to: ${w.label}`}>Go to</Button>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="t-body-01 mt-2">No warnings.</p>}
+        <Accordion className="mt-6">
+          <AccordionItem title={`Completed checks (${readiness.length - open.length} of ${readiness.length})`}>
+            <ul className="space-y-1">
+              {readiness.filter((r) => r.done).map((r) => (
+                <li key={r.id} className="flex items-center gap-2 t-body-01"><CheckmarkFilled size={16} className="fill-[var(--cds-support-success)]" aria-hidden="true" />{r.label}</li>
+              ))}
+            </ul>
+          </AccordionItem>
+        </Accordion>
         </div>
       </section>
-      <Panel id="package" title="Request summary">
-        <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4">
+      <Panel id="package" task="Review" title="Request summary">
+        <dl className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-x-6 gap-y-4">
           <KV label="Borrower" value={s.entityName ?? s.primary.name} />
           <KV label="Application type" value={req.appType + (co ? `, with ${co.name}` : '')} />
           <KV label="Requested amount" value={fmtMoney(req.requested)} mono />
@@ -673,7 +791,7 @@ function ReviewSection({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (s: Se
           <KV label="ACH automatic payment" value={req.ach ? `On, account ${req.achAccount || 'not selected'}` : 'Off'} />
         </dl>
       </Panel>
-      <Panel id="attest" title="Client authorization and attestations">
+      <Panel id="attest" task="Certify" width="form" title="Client authorization and attestations">
         <div className="max-w-md mb-6">
           <SelectField label="How did the client authorize this application?" options={['Signed in person', 'Electronic signature', 'Recorded phone call']} value={req.consentMethod} onChange={(v) => { update({ consentMethod: v }); if (v) log('Client authorization recorded', v, s.requestId); }} helper="Date recorded: 11/19/2025" />
         </div>
@@ -706,7 +824,7 @@ function ReviewSection({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (s: Se
           </AccordionItem>
         </Accordion>
       </Panel>
-      <div className="mt-8 py-4 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--cds-border-subtle-01)]">
+      <div className="mt-8 py-4 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--cds-border-subtle-01)] max-w-[1120px]">
         <p className="t-helper-01 text-[var(--cds-text-secondary)]">
           {role === 'Credit Officer' ? 'Submission is completed by the relationship banker.' : open.length ? `${open.length} item${open.length > 1 ? 's' : ''} open.` : 'All readiness checks are complete.'}
         </p>
@@ -726,23 +844,43 @@ function ReviewSection({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (s: Se
 }
 
 /* ------------------------------- Persistent summary ------------------------------- */
-function SummaryPanel({ m, onGo, section }: { m: RequestModel; onGo: (s: Section) => void; section: Section }) {
+function SummaryPanel({ m, onGo, section }: { m: RequestModel; onGo: (s: Section, anchor?: string) => void; section: Section }) {
   const { req, ev, readiness } = m;
-  const cov = req.requested > 0 ? ev.total / req.requested : 0;
-  const diff = ev.total - req.requested;
+  const g = guidance(m);
+  const cov = g.coverage;
+  const diff = g.margin;
   const done = readiness.filter((r) => r.done).length;
   const open = readiness.filter((r) => !r.done);
   return (
     <aside aria-label="Financial summary and readiness" className="xl:sticky xl:top-6 bg-[var(--cds-layer-01)] lg:col-span-2 xl:col-span-1">
-      <div className="px-5 pt-5 pb-5 space-y-3 border-b border-[var(--cds-border-subtle-01)]">
-        <h2 className="t-heading-02 pb-1">Financial summary</h2>
-        <dl className="space-y-2">
-          <div className="flex justify-between items-baseline gap-3"><dt className="t-body-01 text-[var(--cds-text-secondary)]">Requested amount</dt><dd className="t-heading-03 tabular-nums"><Money value={req.requested} /></dd></div>
-          <div className="flex justify-between items-baseline gap-3"><dt className="t-body-01 text-[var(--cds-text-secondary)]">Estimated borrowing power</dt><dd className="t-heading-03 tabular-nums !font-semibold" aria-live="polite"><Money value={ev.total} /></dd></div>
-          <div className="flex justify-between items-baseline gap-3 t-body-01"><dt className="text-[var(--cds-text-secondary)]">Coverage ratio</dt><dd className={cx('tabular-nums font-semibold', cov < 1 && 'text-[var(--cds-text-error)]')}>{fmtPct(cov)}</dd></div>
+      {req.status === 'draft' && (
+        <section aria-labelledby="next-h" className="px-5 pt-5 pb-5 border-b border-[var(--cds-border-subtle-01)]">
+          <h2 id="next-h" className="t-label-01 text-[var(--cds-text-secondary)]">{g.attention === 'waiting' ? 'Waiting' : 'Next step'}</h2>
+          {g.next ? (
+            <>
+              <p className="t-heading-02 mt-1">{g.next.label}</p>
+              <p className="t-body-01 mt-1">{g.next.detail}</p>
+              <Btn kind="primary" className="w-full !max-w-none mt-4" onClick={() => onGo(g.next!.section, g.next!.anchor)}>{g.next.label}</Btn>
+            </>
+          ) : (
+            <p className="t-body-01 mt-1">Waiting on {g.waitingOn}. No action is needed from you{m.role === 'Credit Officer' ? '' : ' until the review is recorded'}.</p>
+          )}
+        </section>
+      )}
+      <section aria-labelledby="fin-h" className="px-5 pt-5 pb-5 space-y-3 border-b border-[var(--cds-border-subtle-01)]">
+        <h2 id="fin-h" className="t-heading-02">Financial summary</h2>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 items-end">
+          <div><dt className="t-label-01 text-[var(--cds-text-secondary)]">Requested amount</dt><dd className="t-heading-03 tabular-nums mt-0.5"><Money value={req.requested} /></dd></div>
+          <div><dt className="t-label-01 text-[var(--cds-text-secondary)]">Estimated borrowing power</dt><dd className="t-heading-03 tabular-nums !font-semibold mt-0.5" aria-live="polite"><Money value={ev.total} /></dd></div>
+          <div className="col-span-2 flex justify-between items-baseline gap-3 t-body-01"><dt className="text-[var(--cds-text-secondary)]">Coverage of request</dt><dd className={cx('tabular-nums font-semibold', cov < 1 && 'text-[var(--cds-text-error)]')}>{fmtPct(cov)}</dd></div>
         </dl>
-        <div className="h-1 bg-[var(--cds-border-subtle-01)]" aria-hidden="true"><div className={cx('h-full', cov >= 1 ? 'bg-[var(--cds-support-success)]' : 'bg-[var(--cds-support-error)]')} style={{ width: `${Math.min(cov, 1) * 100}%` }} /></div>
-        <p className={cx('t-helper-01', diff >= 0 ? 'text-[var(--cds-text-secondary)]' : 'text-[var(--cds-text-error)]')}>{diff >= 0 ? `${fmtMoney(diff)} above the requested amount` : `${fmtMoney(-diff)} below the requested amount`}</p>
+        <div className="relative h-1 bg-[var(--cds-border-subtle-01)]" aria-hidden="true">
+          <div className={cx('h-full', cov >= 1 ? 'bg-[var(--cds-support-success)]' : 'bg-[var(--cds-support-error)]')} style={{ width: `${Math.min(cov / 1.5, 1) * 100}%` }} />
+          <div className="absolute -top-1 h-3 w-px bg-[var(--cds-text-primary)]" style={{ left: `${(1 / 1.5) * 100}%` }} />
+        </div>
+        <p className={cx('t-helper-01', diff >= 0 ? 'text-[var(--cds-text-secondary)]' : 'text-[var(--cds-text-error)]')}>
+          {diff >= 0 ? `${fmtMoney(diff)} above the requested amount` : `${fmtMoney(-diff)} below the requested amount`}. Submission needs 100%.
+        </p>
         <dl>
           <div className="flex justify-between t-body-01"><dt className="text-[var(--cds-text-secondary)]">Pledged market value</dt><dd className="tabular-nums"><Money value={ev.pledgedValue} /></dd></div>
         </dl>
@@ -753,29 +891,31 @@ function SummaryPanel({ m, onGo, section }: { m: RequestModel; onGo: (s: Section
           {ev.ineligible > 0 && <Tag tone="error">{ev.ineligible} not eligible</Tag>}
         </div>
         <p className="t-helper-01 text-[var(--cds-text-secondary)]">Indicative estimate. Not a credit decision or an offer of credit.</p>
-      </div>
-      <div className="px-5 py-5">
+      </section>
+      <section aria-labelledby="ready-h" className="px-5 py-5">
         <div className="flex justify-between items-baseline">
-          <h2 className="t-heading-02">Readiness</h2>
+          <h2 id="ready-h" className="t-heading-02">Readiness</h2>
           <span className="t-helper-01 tabular-nums text-[var(--cds-text-secondary)]">{done} of {readiness.length} complete</span>
         </div>
         <div className="h-1 bg-[var(--cds-border-subtle-01)] mt-2" aria-hidden="true"><div className="h-full bg-[var(--cds-interactive)]" style={{ width: `${(done / readiness.length) * 100}%` }} /></div>
-        {open.length > 0 ? (
-          <ul className="mt-3 space-y-1">
-            {open.slice(0, 6).map((r) => (
-              <li key={r.id}>
-                <button type="button" className="text-left t-body-compact-01 text-[var(--cds-link-primary)] hover:underline" onClick={() => onGo(r.step)}>{r.label}</button>
-              </li>
-            ))}
-            {open.length > 6 && <li className="t-helper-01 text-[var(--cds-text-secondary)]">{open.length - 6} more</li>}
-          </ul>
+        {open.length > 0 && section === 'review' ? (
+          <p className="t-body-01 mt-3">{open.length} item{open.length > 1 ? 's' : ''} blocking submission. See the list in this section.</p>
+        ) : open.length > 0 ? (
+          <>
+            <p className="t-label-01 text-[var(--cds-text-secondary)] mt-4">Blocking submission ({open.length})</p>
+            <ul className="mt-2 space-y-1">
+              {open.slice(0, 5).map((r) => (
+                <li key={r.id}>
+                  <button type="button" className="text-left t-body-compact-01 text-[var(--cds-link-primary)] hover:underline" onClick={() => onGo(r.step, ANCHOR[r.id])}>{r.label}</button>
+                </li>
+              ))}
+              {open.length > 5 && <li><button type="button" className="text-left t-helper-01 text-[var(--cds-link-primary)] hover:underline" onClick={() => onGo('review', 'readiness')}>{open.length - 5} more in Review and submit</button></li>}
+            </ul>
+          </>
         ) : (
           <p className="mt-3 t-body-01 flex gap-2 items-center"><CheckmarkFilled size={16} className="fill-[var(--cds-support-success)]" aria-hidden="true" /> Ready to submit</p>
         )}
-        {req.status === 'draft' && section !== 'review' && (
-          <Btn kind={open.length ? 'tertiary' : 'primary'} className="w-full !max-w-none mt-4" onClick={() => onGo('review')}>Review and submit</Btn>
-        )}
-      </div>
+      </section>
     </aside>
   );
 }
