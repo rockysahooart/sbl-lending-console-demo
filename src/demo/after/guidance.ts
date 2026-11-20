@@ -55,8 +55,8 @@ const ACTION: Record<string, string> = {
   pep: 'Complete client questions', questions: 'Complete client questions',
   co: 'Add the co-borrower', coid: 'Update co-borrower ID', perm: 'Confirm joint application',
   pledge: 'Select collateral', review: 'Review collateral', coverage: 'Resolve the shortfall',
-  proceeds: 'Complete loan structure', wealth: 'Complete loan structure', repay: 'Complete loan structure',
-  sustain: 'Complete loan structure', pricing: 'Complete loan structure', ach: 'Complete loan structure',
+  proceeds: 'Complete loan terms', wealth: 'Complete loan terms', repay: 'Complete loan terms',
+  sustain: 'Complete loan terms', pricing: 'Complete loan terms', ach: 'Complete loan terms',
   consent: 'Complete attestations', attest: 'Complete attestations',
 };
 

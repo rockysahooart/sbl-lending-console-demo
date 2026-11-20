@@ -57,17 +57,27 @@ collateral), submission, and a pending-review list.
 Built with the **IBM Carbon Design System** (v11), adapted to a PNC-style
 blue theme:
 
-- **Pipeline** with summary tiles, filters, search, and a next action for
-  each request.
-- **Request workspace** in four sections — Client and parties, Collateral
-  and evaluation, Loan structure, Review and submit — with a persistent
-  financial summary and a readiness checklist.
+- **Pipeline** grouped by who needs to act next (you, ready to submit,
+  another team), led by the highest-priority request and a specific next
+  action for every row. **New request** starts from the client directory and
+  sends you to any request already in progress instead of duplicating it.
+- **Request workspace** in three views — Client and parties, Collateral and
+  terms, Review and submit — with a status panel that always shows the next
+  step, the financial summary and readiness.
+- **Conversation view** for the client step: verify who you're speaking
+  with, then ask only what isn't already on file, with talking points to
+  hand. The full record is one switch away.
+- **Collateral and terms** keeps pledging, evaluation, exceptions and the
+  requested amount on one view, so the amount is set next to the borrowing
+  power it depends on.
 - **Live collateral evaluation.** Pledging an account updates estimated
   borrowing power immediately; restricted stock is not eligible and
   concentrated single-issuer positions are flagged for credit officer
   review. Calculation details and an estimate history explain every number.
-- **Underwriting** and **Active credit** screens covering what happens after
-  submission: a simulated decision, signatures, and LTV monitoring alerts.
+- **Underwriting** returns conditions to the banker's queue ("Respond to
+  condition"); the decision follows once they are provided.
+- **Active credit** leads with lines that need attention; LTV alerts and
+  document follow-up are handled inline.
 
 ### Simulated safeguards (After only)
 
@@ -108,7 +118,7 @@ blue theme:
 
 1. Enter the prototype in **After** with **Complex collateral**, and open
    Northbridge Holdings LLC from the pipeline.
-2. Go to **Collateral and evaluation**. The concentrated position is flagged
+2. The pipeline's **Review collateral** opens **Collateral and terms**. The concentrated position is flagged
    *Review required* and estimated borrowing power falls short of the
    requested amount.
 3. Select **Request credit officer review**.
@@ -119,8 +129,9 @@ blue theme:
    power updates and the change appears in the estimate history.
 6. Switch back to **Relationship Banker**, complete the remaining readiness
    items, and **Submit to underwriting**.
-7. In **Underwriting**, use **Simulate approval**; then see the line in
-   **Active credit**.
+7. In **Underwriting**, try **Simulate a condition**: the request returns to
+   your pipeline as **Respond to condition**. Mark it as provided, then use
+   **Simulate approval** and see the line in **Active credit**.
 
 ### Session metrics
 
@@ -236,8 +247,9 @@ src/
     engine.ts              Collateral evaluation, eligibility and readiness rules
     after/                 AFTER — the redesigned workspace
       AfterApp.tsx         Carbon UI shell, navigation, roles, session timeout
-      Pipeline.tsx         Pipeline dashboard
-      Workspace.tsx        Request workspace (four sections + summary)
+      Pipeline.tsx         Pipeline and New request
+      guidance.ts          Next action, exceptions and warnings per request
+      Workspace.tsx        Request workspace (three views + status panel)
       PostUnderwriting.tsx Underwriting and Active credit
       state.ts             Request model, audit trail, roles
       ui.tsx               Carbon component wrappers

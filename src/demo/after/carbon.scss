@@ -18,6 +18,7 @@
 // Contextual layout tokens (--cds-layout-*) used for control heights and density.
 // Emits only --cds-* custom properties and .cds--layout classes — no element styles.
 @use '@carbon/react/scss/layout';
+@use '@carbon/react/scss/breakpoint' as bp;
 
 @use '@carbon/react/scss/components/button';
 @use '@carbon/react/scss/components/text-input';
@@ -138,7 +139,8 @@ $pnc-white: map.merge(
     border-block-end: 1px solid var(--cds-border-subtle-00);
   }
   .cds--data-table tbody, .cds--data-table tbody tr:hover, .cds--data-table tbody tr.cds--data-table--selected { background: var(--cds-background); }
-  .cds--data-table tbody tr:hover td { background: var(--cds-background-hover); border-block-end-color: var(--cds-border-subtle-00); }
+  // Opaque base + hover token, so nothing beneath the row can darken it.
+  .cds--data-table tbody tr:hover td { background: linear-gradient(var(--cds-background-hover), var(--cds-background-hover)), var(--cds-background); border-block-end-color: var(--cds-border-subtle-00); }
 
   // Numeric columns: right-aligned headers over right-aligned, tabular figures.
   .cds--data-table th.num, .cds--data-table th.num .cds--table-header-label { text-align: end; }
@@ -150,7 +152,7 @@ $pnc-white: map.merge(
   .cds--data-table tr.cds--data-table--selected td:first-child,
   .cds--data-table tr.is-selected-row td:first-child { box-shadow: inset 3px 0 0 var(--cds-interactive); }
   .cds--data-table tr.cds--data-table--selected:hover td,
-  .cds--data-table tr.is-selected-row:hover td { background: var(--cds-background-hover); }
+  .cds--data-table tr.is-selected-row:hover td { background: linear-gradient(var(--cds-background-hover), var(--cds-background-hover)), var(--cds-background); }
   .cds--data-table tr.cds--data-table--selected .cds--btn--ghost { color: var(--cds-link-primary); font-weight: 600; }
 }
 
@@ -172,6 +174,50 @@ $pnc-white: map.merge(
   // Collateral totals: a strong rule separates the sum from the accounts.
   .cds--data-table tbody tr.totals-row td, .cds--data-table tbody tr.totals-row:hover td { background: var(--cds-background); border-block-start: 1px solid var(--cds-border-strong-01); border-block-end: 0; box-shadow: none; }
   .pipeline-table td .cds--btn { margin-block-start: -0.25rem; }
+}
+
+/*
+ * SBL design tokens on top of Carbon. Every width, accent and display size used by
+ * the After experience is defined here once; components reference these classes.
+ */
+.sbl-after {
+  // Content widths (multiples of Carbon's 16px mini unit).
+  --sbl-width-form: 56rem;       // 896px  forms, questions, attestations, reading text
+  --sbl-width-record: 70rem;     // 1120px structured client records, summaries
+  --sbl-width-page: 120rem;      // 1920px dashboards and tables (centred)
+  --sbl-width-field-pair: 40rem; // 640px  two related dropdowns side by side
+  --sbl-width-search: 20rem;     // 320px  table filters
+  --sbl-brand-accent: #f5a742;   // PNC brand mark in the header only
+}
+
+// Carbon button colours are component tokens; the theme map above doesn't reach them.
+.sbl-after, .cds--modal.sbl-after-modal {
+  --cds-button-primary: #0066cc;
+  --cds-button-primary-hover: #0057ad;
+  --cds-button-primary-active: #003f7d;
+  --cds-button-tertiary: #0066cc;
+  --cds-button-tertiary-hover: #0057ad;
+  --cds-button-tertiary-active: #003f7d;
+  --cds-button-focus-color: #0066cc;
+}
+
+.sbl-after {
+
+  .w-form { max-inline-size: var(--sbl-width-form); }
+  .w-record { max-inline-size: var(--sbl-width-record); }
+  .w-page { max-inline-size: var(--sbl-width-page); }
+  .w-field-pair { max-inline-size: var(--sbl-width-field-pair); }
+  .w-search { inline-size: 100%; @include bp.breakpoint(md) { inline-size: var(--sbl-width-search); } }
+
+  // Carbon type styles not covered by the base set above.
+  .t-heading-06 { @include type.type-style('heading-06'); }
+  .t-heading-compact-01 { @include type.type-style('heading-compact-01'); }
+  // Key financial figures: heading-03 up to the max breakpoint, heading-04 beyond.
+  .t-metric { @include type.type-style('heading-03'); font-variant-numeric: tabular-nums; @include bp.breakpoint(max) { @include type.type-style('heading-04'); } }
+
+  // One accent treatment, 3px IBM Blue, for "selected" and "this matters most".
+  .accent-top { box-shadow: inset 0 3px 0 var(--cds-interactive); }
+  .accent-start { box-shadow: inset 3px 0 0 var(--cds-interactive); }
 }
 
 // Carbon modals render through a portal at <body>; apply the same theme there.

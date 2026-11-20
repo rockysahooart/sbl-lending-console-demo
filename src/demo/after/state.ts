@@ -32,6 +32,14 @@ export interface EstimateEvent {
   to: number;
 }
 
+export interface Condition {
+  id: string;
+  text: string;
+  status: 'open' | 'provided';
+  at: string;
+  providedAt?: string;
+}
+
 export interface AfterRequest {
   section: Section;
   visited: Section[];
@@ -71,6 +79,8 @@ export interface AfterRequest {
   attest: Record<string, boolean>;
   disclosureViewed: boolean;
   estimateLog: EstimateEvent[];
+  /** Underwriting conditions returned to the banker after submission. */
+  conditions?: Condition[];
   status: 'draft' | 'submitted' | 'approved';
   submittedAt?: string;
   approvedAt?: string;
@@ -129,6 +139,7 @@ export function initialRequest(id: ScenarioId): AfterRequest {
     attest: {},
     disclosureViewed: false,
     estimateLog: [],
+    conditions: [],
     status: 'draft',
   };
 }
@@ -139,6 +150,8 @@ export interface AfterGlobal {
   audit: AuditEvent[];
   acknowledgedAlerts: string[];
   signedLines: string[];
+  /** Active lines with a document reminder sent this session. */
+  remindersSent?: string[];
 }
 type GlobalValue = readonly [AfterGlobal, Dispatch<SetStateAction<AfterGlobal>>];
 const GlobalCtx = createContext<GlobalValue | null>(null);

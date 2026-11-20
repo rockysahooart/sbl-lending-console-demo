@@ -101,7 +101,7 @@ function AfterInner() {
         <div className="max-w-md px-6">
           <h1 className="t-heading-04">You are signed out</h1>
           <p className="t-body-01 text-[var(--cds-text-secondary)] mt-3">Your session ended. Draft requests are saved. Sign in to continue.</p>
-          <Button className="mt-6" onClick={() => { setSignedOut(false); log('Signed in', 'Session started'); }}>Sign in</Button>
+          <Button size="md" className="mt-6" onClick={() => { setSignedOut(false); log('Signed in', 'Session started'); }}>Sign in</Button>
         </div>
       </div>
     );
@@ -112,7 +112,7 @@ function AfterInner() {
       <Header aria-label="SBL Workspace">
         <SkipToContent href="#after-main" />
         <HeaderName href="#" prefix="" onClick={(e: React.MouseEvent) => { e.preventDefault(); setRoute({ page: 'pipeline' }); }}>
-          <span className="inline-block w-1 h-4 bg-[#F5A742] mr-2" aria-hidden="true" />
+          <span className="inline-block w-1 h-4 bg-[var(--sbl-brand-accent)] mr-2" aria-hidden="true" />
           SBL Workspace
         </HeaderName>
         <HeaderNavigation aria-label="Workspace">
@@ -138,7 +138,7 @@ function AfterInner() {
           <div className="p-4">
             <p className="t-heading-02">{USERS[role]}</p>
             <p className="t-helper-01 text-[var(--cds-text-secondary)]">{role} · Private Banking</p>
-            <div className="mt-5">
+            <div className="mt-6">
               <SelectField
                 label="Role (demo)"
                 options={['Relationship Banker', 'Credit Officer']}
@@ -243,8 +243,8 @@ function GlobalSearch({ onOpen }: { onOpen: (r: Route) => void }) {
         <ul id="global-search-list" role="listbox" aria-label="Search results" className="absolute z-[8000] left-0 right-0 top-full bg-[var(--cds-layer-01)] text-[var(--cds-text-primary)] shadow-lg max-h-80 overflow-y-auto border border-[var(--cds-border-subtle-01)]">
           {hits.length === 0 && <li className="px-4 py-3 t-body-01 text-[var(--cds-text-secondary)]">No results for “{q}”. Check the name or identifier.</li>}
           {hits.map((h, i) => (
-            <li key={h.sub} id={`gs-${i}`} role="option" aria-selected={i === active} onMouseDown={(e) => { e.preventDefault(); choose(h); }} className={cx('px-4 py-2.5 cursor-pointer', i === active ? 'bg-[var(--cds-layer-selected-01)]' : 'hover:bg-[var(--cds-layer-hover-01)]')}>
-              <div className="t-body-compact-01 font-medium">{h.label}</div>
+            <li key={h.sub} id={`gs-${i}`} role="option" aria-selected={i === active} onMouseDown={(e) => { e.preventDefault(); choose(h); }} className={cx('px-4 py-3 cursor-pointer', i === active ? 'bg-[var(--cds-layer-selected-01)]' : 'hover:bg-[var(--cds-layer-hover-01)]')}>
+              <div className="t-body-compact-01 font-semibold">{h.label}</div>
               <div className="t-helper-01 text-[var(--cds-text-secondary)]">{h.sub}</div>
             </li>
           ))}

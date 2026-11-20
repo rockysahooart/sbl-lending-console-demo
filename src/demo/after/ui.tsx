@@ -111,13 +111,13 @@ export type Task = 'Review' | 'Confirm' | 'Enter' | 'Ask the client' | 'Select' 
 
 /** Content width inside the middle workspace: forms 900px, structured records 1120px, tables full width. */
 export type Width = 'form' | 'record' | 'full';
-export const WIDTH: Record<Width, string> = { form: 'max-w-[900px]', record: 'max-w-[1120px]', full: '' };
+export const WIDTH: Record<Width, string> = { form: 'w-form', record: 'w-record', full: '' };
 
 export function Panel({ title, children, right, id, description, task, width = 'record' }: { title: string; children: ReactNode; right?: ReactNode; id?: string; description?: ReactNode; task?: Task; width?: Width }) {
   return (
     <section aria-labelledby={id} className="pt-8 first:pt-0 group/panel">
       <div className={cx(WIDTH[width], 'pb-8 border-b border-[var(--cds-border-subtle-00)] group-last/panel:border-0 group-last/panel:pb-0')}>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
           {task && <p className="t-label-01 text-[var(--cds-text-secondary)] mb-1">{task}</p>}
           <h3 id={id} tabIndex={-1} className="t-heading-03 focus:outline-none">{title}</h3>

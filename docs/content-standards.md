@@ -79,3 +79,5 @@ available” (before approval), “risk-free”, “secure” as an absolute cla
 | Session timeout modal | Timeout duration and wording | Internal security policy |
 | Active credit | “Maintenance threshold”, alert text, outreach action | Collateral maintenance policy; may trigger client notices |
 | Pricing exception | “Approval is not guaranteed.” | Pricing policy wording |
+| Client → conversation view | Talking points (indicative estimate, collateral maintenance, who decides) | Customer-facing statements about credit and collateral risk |
+| Underwriting → conditions | Condition wording returned to the banker | Underwriting policy; may be shared with the client |

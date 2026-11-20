@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ActionableNotification, Button, InlineNotification, Modal, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow } from '@carbon/react';
 import { CheckmarkFilled, Time } from '@carbon/icons-react';
 import { ACTIVE_LINES, PIPELINE, fmtMoney, fmtPct, type ActiveLine, type ScenarioId } from '../data';
-import { useAfterRequest, useAudit } from './state';
+import { nowStamp, useAfterRequest, useAudit } from './state';
 import { KV, Money, PageHeader, Tag, cx } from './ui';
 import type { Route } from './AfterApp';
 
@@ -25,9 +25,16 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
   const [sel, setSel] = useState(focusId && rows.some((r) => r.key === focusId) ? focusId : rows[0]?.key);
   const cur = rows.find((r) => r.key === sel);
   const target = rows.find((r) => r.key === confirmFor);
+  const [conditionFor, setConditionFor] = useState<string | null>(null);
+  const openOf = (r?: (typeof rows)[number]) => (r?.scenario?.m.req.conditions ?? []).filter((c) => c.status === 'open');
+  const condTarget = rows.find((r) => r.key === conditionFor);
+  const provide = (r: (typeof rows)[number], id: string) => {
+    r.scenario!.m.setReq((p) => ({ ...p, conditions: (p.conditions ?? []).map((c) => (c.id === id ? { ...c, status: 'provided', providedAt: nowStamp() } : c)) }));
+    log('Condition provided', 'Response sent to Credit Underwriting', r.key);
+  };
 
   return (
-    <div className="px-4 sm:px-8 py-8 max-w-[1920px] mx-auto">
+    <div className="px-4 sm:px-8 py-8 w-page mx-auto">
       <PageHeader title="Underwriting" description="Credit Underwriting owns these decisions. You’re notified when a decision or condition needs your response." />
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_440px] gap-6 items-start">
         <TableContainer title="Requests in underwriting">
@@ -54,7 +61,7 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
                     <TableCell className="num"><Money value={r.power} /></TableCell>
                     <TableCell>{r.submitted}</TableCell>
                     <TableCell>{r.status === 'approved' ? <Tag tone="success">Approved</Tag> : <Tag tone="info">Under review</Tag>}</TableCell>
-                    <TableCell>{r.status === 'approved' ? <span className="t-body-01 font-semibold">Monitor the credit line</span> : <span className="t-body-01 text-[var(--cds-text-secondary)]">None — awaiting decision</span>}</TableCell>
+                    <TableCell>{r.status === 'approved' ? <span className="t-heading-compact-01">Monitor the credit line</span> : openOf(r).length ? <span className="t-heading-compact-01">Respond to condition</span> : <span className="t-body-01 text-[var(--cds-text-secondary)]">None — awaiting decision</span>}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -65,12 +72,29 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
           <section aria-label={`Underwriting detail for ${cur.client}`} className="bg-[var(--cds-layer-01)] p-6 xl:sticky xl:top-6">
             <h2 className="t-heading-03">{cur.client}</h2>
             <p className="t-helper-01 text-[var(--cds-text-secondary)]">{cur.key}</p>
-            <div className="mt-5 bg-[var(--cds-background)] px-4 py-3 border-l-[3px] border-[var(--cds-interactive)]">
-              <p className="t-label-01 text-[var(--cds-text-secondary)]">{cur.status === 'approved' ? 'Decision' : 'Waiting on'}</p>
-              <p className="t-heading-02 mt-0.5">{cur.status === 'approved' ? 'Approved by Credit Underwriting' : 'Credit Underwriting · decision due in 2 business days'}</p>
-              <p className="t-body-01 mt-1">{cur.status === 'approved' ? 'Next: monitor documents and collateral in Active credit.' : 'No action is needed from you. Conditions, if any, will appear here.'}</p>
+            <div className="mt-6 bg-[var(--cds-background)] px-4 py-3 accent-start">
+              <p className="t-label-01 text-[var(--cds-text-secondary)]">{cur.status === 'approved' ? 'Decision' : openOf(cur).length ? 'Needs your response' : 'Waiting on'}</p>
+              <p className="t-heading-02 mt-0.5">{cur.status === 'approved' ? 'Approved by Credit Underwriting' : openOf(cur).length ? `${openOf(cur).length} open condition${openOf(cur).length > 1 ? 's' : ''} from Credit Underwriting` : 'Credit Underwriting · decision due in 2 business days'}</p>
+              <p className="t-body-01 mt-1">{cur.status === 'approved' ? 'Next: monitor documents and collateral in Active credit.' : openOf(cur).length ? 'The decision follows once each condition is provided.' : 'No action is needed from you. Conditions, if any, will appear here.'}</p>
             </div>
-            <dl className="grid grid-cols-2 gap-4 mt-5">
+            {(cur.scenario?.m.req.conditions ?? []).length > 0 && (
+              <section aria-labelledby="cond-h" className="mt-6">
+                <h3 id="cond-h" className="t-heading-02">Conditions</h3>
+                <ul className="mt-2 border-t border-[var(--cds-border-subtle-01)]">
+                  {cur.scenario!.m.req.conditions!.map((c) => (
+                    <li key={c.id} className="py-3 border-b border-[var(--cds-border-subtle-01)]">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="t-body-01">{c.text}</p>
+                        <Tag tone={c.status === 'open' ? 'warning' : 'success'}>{c.status === 'open' ? 'Open' : 'Provided'}</Tag>
+                      </div>
+                      <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-1">Issued {c.at}{c.providedAt ? ` · provided ${c.providedAt}` : ''}</p>
+                      {c.status === 'open' && <Button kind="primary" size="sm" className="mt-2" onClick={() => provide(cur, c.id)}>Mark as provided</Button>}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            <dl className="grid grid-cols-2 gap-4 mt-6">
               <KV label="Underwriter" value="Credit Underwriting" />
               <KV label="Submitted" value={cur.submitted ? cur.submitted.split(',')[0] : '—'} mono />
               <KV label="Requested amount" value={fmtMoney(cur.requested)} mono />
@@ -96,8 +120,12 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
                 <InlineNotification kind="success" lowContrast hideCloseButton className="!max-w-none mt-6" title="Approved" subtitle={`Approved credit limit ${fmtMoney(approvedLimit(cur.requested, cur.power))}, ${cur.scenario.m.req.approvedAt}.`} />
               ) : (
                 <div className="mt-6 border border-dashed border-[var(--cds-border-strong-01)] p-4">
-                  <p className="t-helper-01 text-[var(--cds-text-secondary)]">Demo action: simulates an underwriting decision so the servicing stage can be explored.</p>
-                  <Button kind="tertiary" size="sm" className="mt-3" onClick={() => setConfirmFor(cur.key)}>Simulate approval</Button>
+                  <p className="t-helper-01 text-[var(--cds-text-secondary)]">Demo actions: simulate what Credit Underwriting does so the rest of the lifecycle can be explored.</p>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {openOf(cur).length === 0 && <Button kind="tertiary" size="sm" onClick={() => setConfirmFor(cur.key)}>Simulate approval</Button>}
+                    <Button kind="ghost" size="sm" onClick={() => setConditionFor(cur.key)}>Simulate a condition</Button>
+                  </div>
+                  {openOf(cur).length > 0 && <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-2">A decision can be simulated once open conditions are provided.</p>}
                 </div>
               )
             ) : (
@@ -110,6 +138,23 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
           </section>
         )}
       </div>
+      <Modal
+        open={!!condTarget}
+        size="sm"
+        modalHeading="Simulate an underwriting condition?"
+        primaryButtonText="Simulate condition"
+        secondaryButtonText="Cancel"
+        onRequestClose={() => setConditionFor(null)}
+        onRequestSubmit={() => {
+          if (!condTarget?.scenario) return;
+          const text = 'Provide the most recent month-end statement for each pledged account.';
+          condTarget.scenario.m.setReq((p) => ({ ...p, conditions: [...(p.conditions ?? []), { id: `c${(p.conditions ?? []).length + 1}`, text, status: 'open', at: nowStamp() }] }));
+          log('Underwriting condition issued (simulated)', text, condTarget.key);
+          setConditionFor(null);
+        }}
+      >
+        {condTarget && <p className="t-body-01">Demo action. Credit Underwriting asks {condTarget.client}’s banker for the most recent month-end statement for each pledged account. The request returns to the banker’s pipeline. No real request is made.</p>}
+      </Modal>
       <Modal
         open={!!target}
         size="sm"
@@ -175,7 +220,7 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
   }).sort((a, b) => a.rank - b.rank);
 
   return (
-    <div className="px-4 sm:px-8 py-8 max-w-[1920px] mx-auto">
+    <div className="px-4 sm:px-8 py-8 w-page mx-auto">
       <PageHeader title="Active credit" description="Approved credit lines you service. Lines that need attention come first." />
       <section aria-labelledby="attn-h" className="mb-10">
         <h2 id="attn-h" className="t-heading-03">Needs attention <span className="tabular-nums">({attention.length})</span></h2>
@@ -185,12 +230,21 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
           <ul className="mt-3 border-t border-[var(--cds-border-strong-01)]">
             {attention.map((a) => (
               <li key={a.key} className="grid grid-cols-1 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)_auto] gap-x-8 gap-y-2 items-center py-4 border-b border-[var(--cds-border-subtle-00)]">
-                <div><p className="t-body-01 !font-semibold">{a.line.client}</p><p className="t-helper-01 text-[var(--cds-text-secondary)]">{a.line.id}</p></div>
+                <div><p className="t-heading-compact-01">{a.line.client}</p><p className="t-helper-01 text-[var(--cds-text-secondary)]">{a.line.id}</p></div>
                 <div className="flex items-start gap-3">
                   <Tag tone={a.tone}>{a.tag}</Tag>
                   <p className="t-body-01">{a.text}</p>
                 </div>
-                <Button kind={a.tone === 'error' ? 'primary' : 'tertiary'} size="sm" onClick={() => { setSel(a.line.id); requestAnimationFrame(() => { const el = document.getElementById('credit-detail'); el?.scrollIntoView({ block: 'start' }); el?.focus({ preventScroll: true }); }); }} aria-label={`${a.action}: ${a.line.client}`}>{a.action}</Button>
+                <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                  {a.rank === 0 ? (
+                    <Button kind="primary" size="sm" onClick={() => { setGlobal((g) => ({ ...g, acknowledgedAlerts: [...g.acknowledgedAlerts, a.line.id] })); log('Collateral alert acknowledged', 'Client outreach scheduled', a.line.id); }} aria-label={`Acknowledge and schedule outreach: ${a.line.client}`}>Acknowledge and schedule outreach</Button>
+                  ) : (global.remindersSent ?? []).includes(a.line.id) ? (
+                    <Tag tone="success">Reminder sent</Tag>
+                  ) : (
+                    <Button kind="tertiary" size="sm" onClick={() => { setGlobal((g) => ({ ...g, remindersSent: [...(g.remindersSent ?? []), a.line.id] })); log('Document reminder sent', 'Reminder sent to the client', a.line.id); }} aria-label={`Send document reminder: ${a.line.client}`}>Send document reminder</Button>
+                  )}
+                  <Button kind="ghost" size="sm" onClick={() => { setSel(a.line.id); requestAnimationFrame(() => { const el = document.getElementById('credit-detail'); el?.scrollIntoView({ block: 'start' }); el?.focus({ preventScroll: true }); }); }} aria-label={`View line: ${a.line.client}`}>View line</Button>
+                </div>
               </li>
             ))}
           </ul>
@@ -240,7 +294,7 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
       </TableContainer>
 
       <section id="credit-detail" tabIndex={-1} aria-label={`Detail for ${cur.client}`} className="mt-10 border-t-2 border-[var(--cds-interactive)] focus:outline-none scroll-mt-4">
-        <div className="py-5 border-b border-[var(--cds-border-subtle-00)] flex flex-wrap items-center justify-between gap-4">
+        <div className="py-4 border-b border-[var(--cds-border-subtle-00)] flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="t-heading-03">{cur.client}</h2>
             <p className="t-helper-01 text-[var(--cds-text-secondary)]">{cur.id} · Approved {cur.approvedOn}</p>
