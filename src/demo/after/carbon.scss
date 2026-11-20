@@ -38,6 +38,7 @@
 @use '@carbon/react/scss/components/content-switcher';
 @use '@carbon/react/scss/components/link';
 @use '@carbon/react/scss/components/structured-list';
+@use '@carbon/react/scss/components/tabs';
 @use '@carbon/react/scss/components/toggle';
 @use '@carbon/react/scss/components/tile';
 @use '@carbon/react/scss/components/stack';
@@ -93,6 +94,12 @@ $pnc-white: map.merge(
 
   // The UI shell header is fixed in Carbon; inside the demo frame it flows.
   .cds--header { position: relative; inset: auto; }
+  // Page title centred in the header, as in the original console.
+  .sbl-header-title { position: absolute; inset-inline-start: 50%; transform: translateX(-50%); margin: 0; white-space: nowrap; display: none; @include bp.breakpoint(lg) { display: block; } }
+  // The menu opens below the header (the header is not fixed to the viewport in this prototype).
+  .cds--side-nav { position: absolute; inset-block-start: 100%; block-size: calc(100vh - 6rem); z-index: 8000; }
+  .cds--side-nav__overlay { position: absolute; inset-block-start: 100%; block-size: calc(100vh - 6rem); }
+  .cds--header__menu-toggle { display: flex; }
   // The user panel anchors under this header (not to the viewport top) so it never covers header controls.
   .cds--header-panel { position: absolute; inset-block-start: 100%; block-size: auto; max-block-size: calc(100vh - 6rem); overflow-y: auto; border-inline-start: 1px solid var(--cds-border-subtle-01); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2); }
 
@@ -224,4 +231,46 @@ $pnc-white: map.merge(
 .cds--modal.sbl-after-modal {
   @include theme.theme($pnc-white);
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+// ---------- Original-console structure, modernized ----------
+.sbl-after {
+  // Fixed footer of each screen: Back on the left, the primary action on the right.
+  .step-footer {
+    position: sticky; inset-block-end: 0; z-index: 5;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem;
+    margin-block-start: 2rem; padding-block: 1rem;
+    background: var(--cds-background);
+    border-block-start: 1px solid var(--cds-border-subtle-01);
+  }
+  // Each titled section of a step, separated by a rule as in the original.
+  .step-section { padding-block: 2rem; border-block-end: 1px solid var(--cds-border-subtle-01); }
+  .step-section:first-child { padding-block-start: 0.5rem; }
+  .step-section:last-child, .step-section:has(+ .step-footer) { border-block-end: 0; }
+  // Question on the left, answers on the right.
+  .question-row {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; align-items: center;
+    padding-block: 0.875rem; border-block-end: 1px solid var(--cds-border-subtle-00);
+    @include bp.breakpoint(md) { grid-template-columns: minmax(0, 1fr) auto; gap: 2rem; }
+    .cds--form-item { margin: 0; }
+    .cds--radio-button-group { margin: 0; }
+  }
+  .question-row:last-child { border-block-end: 0; }
+  // Borrower summary card (primary borrower or co-borrower).
+  .customer-card {
+    display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;
+    padding: 1rem 1.25rem; background: var(--cds-layer-01);
+  }
+  .customer-card__avatar {
+    inline-size: 2.5rem; block-size: 2.5rem; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--cds-interactive); color: var(--cds-text-on-color);
+    @include type.type-style('heading-compact-01');
+  }
+  // Evaluation account tiles: selected = 1px interactive border + inset rule.
+  .eval-tile { background: var(--cds-background); border-color: var(--cds-border-subtle-01); }
+  .eval-tile.is-selected { border-color: var(--cds-interactive); box-shadow: inset 0 3px 0 var(--cds-interactive); }
+  .eval-toggle:focus-visible { outline: 2px solid var(--cds-focus); outline-offset: 2px; }
+  .queue-table td { vertical-align: middle; }
+  .queue-search-by .cds--radio-button-group { flex-wrap: wrap; }
 }

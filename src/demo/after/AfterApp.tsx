@@ -5,33 +5,51 @@ import '@fontsource/ibm-plex-sans/500.css';
 import '@fontsource/ibm-plex-sans/600.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import './carbon.scss';
-import { Header, HeaderGlobalAction, HeaderGlobalBar, HeaderMenuItem, HeaderName, HeaderNavigation, HeaderPanel, Modal, Search, SkipToContent, Button } from '@carbon/react';
+import { Header, HeaderGlobalAction, HeaderGlobalBar, HeaderMenuButton, HeaderName, HeaderPanel, Modal, SideNav, SideNavItems, SideNavLink, SkipToContent, Button } from '@carbon/react';
 import { UserAvatar } from '@carbon/icons-react';
 import { useDemo, type Stage } from '../DemoContext';
 import { usePersistentState } from '../../app/state/ConsoleStore';
-import { ACTIVE_LINES, PIPELINE, SCENARIOS, type ScenarioId } from '../data';
-import { cx, SelectField } from './ui';
-import { Pipeline } from './Pipeline';
+import type { ScenarioId } from '../data';
+import { SelectField } from './ui';
+import { Console } from './Console';
+import { Evaluation } from './Evaluation';
 import { Workspace } from './Workspace';
 import { Underwriting, ActiveCredit } from './PostUnderwriting';
-import { AfterGlobalProvider, USERS, nowStamp, useAudit, type Role, type Section } from './state';
+import { AfterGlobalProvider, STEPS, USERS, nowStamp, useAudit, type Role, type Section } from './state';
+
+const FULL_NAME: Record<Role, string> = { 'Relationship Banker': 'Sarah Mitchell', 'Credit Officer': 'Michael Okonkwo' };
+const ROLE_LABEL: Record<Role, string> = { 'Relationship Banker': 'Loan Officer', 'Credit Officer': 'Credit Officer' };
 import { useConsoleStore } from '../../app/state/ConsoleStore';
 
+export type ConsoleTab = 'pending' | 'evaluations' | 'submitted';
 export type Route =
-  | { page: 'pipeline' }
+  | { page: 'console'; tab?: ConsoleTab }
+  | { page: 'evaluation'; id: ScenarioId }
   | { page: 'request'; id: ScenarioId; section: Section }
   | { page: 'confirmation'; id: ScenarioId }
-  | { page: 'underwriting'; id?: string }
+  | { page: 'review'; id?: string }
   | { page: 'credit'; id?: string };
 
-const SECTION_STAGE: Record<Section, Stage> = { client: 'customer', collateral: 'collateral', structure: 'loan', review: 'review' };
+const SECTION_STAGE: Record<Section, Stage> = { customer: 'customer', parties: 'parties', loan: 'loan', collateral: 'collateral' };
 
 export function stageOf(r: Route): Stage {
-  if (r.page === 'pipeline') return 'dashboard';
+  if (r.page === 'console') return 'dashboard';
+  if (r.page === 'evaluation') return 'evaluation';
   if (r.page === 'request') return SECTION_STAGE[r.section];
   if (r.page === 'confirmation') return 'submitted';
   return 'servicing';
 }
+
+const PAGES = ['console', 'evaluation', 'request', 'confirmation', 'review', 'credit'];
+const isRoute = (r: unknown): r is Route => {
+  const x = r as Route | undefined;
+  if (!x || !PAGES.includes(x.page)) return false;
+  return x.page !== 'request' || STEPS.some((st) => st.key === x.section);
+};
+
+/** Page title shown in the centre of the header, as in the original console. */
+const titleOf = (r: Route) =>
+  r.page === 'console' ? 'Securities Lending Console' : r.page === 'evaluation' ? 'Evaluation' : r.page === 'review' ? 'Pending Review' : r.page === 'credit' ? 'Active Credit' : 'Loan Request';
 
 /** Session timeout (simulated): warning at 13 minutes idle, sign-out at 15. `?sessionSeconds=N` shortens it for testing. */
 const SESSION_MS = (() => {
@@ -51,8 +69,10 @@ export function AfterApp() {
 function AfterInner() {
   const { scenario, stage, jumpToken, reportStage } = useDemo();
   const { read } = useConsoleStore();
-  const [route, setRoute] = usePersistentState<Route>('after:route', () => ({ page: 'pipeline' }));
+  const [stored, setRoute] = usePersistentState<Route>('after:route', () => ({ page: 'console' }));
+  const route: Route = isRoute(stored) ? stored : { page: 'console' };
   const [panelOpen, setPanelOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
   const { role, log, setGlobal } = useAudit();
 
@@ -63,19 +83,20 @@ function AfterInner() {
     lastJump.current = jumpToken;
     const st = stage.after;
     const id = scenario;
+    const submitted = read<Record<string, boolean>>('after:submitted')?.[id];
     const map: Partial<Record<Stage, Route>> = {
-      dashboard: { page: 'pipeline' },
-      evaluation: { page: 'request', id, section: 'collateral' },
+      dashboard: { page: 'console' },
+      evaluation: { page: 'evaluation', id },
+      acknowledgment: { page: 'evaluation', id },
+      customer: { page: 'request', id, section: 'customer' },
+      parties: { page: 'request', id, section: 'parties' },
+      loan: { page: 'request', id, section: 'loan' },
       collateral: { page: 'request', id, section: 'collateral' },
-      customer: { page: 'request', id, section: 'client' },
-      parties: { page: 'request', id, section: 'client' },
-      loan: { page: 'request', id, section: 'structure' },
-      acknowledgment: { page: 'request', id, section: 'review' },
-      review: { page: 'request', id, section: 'review' },
-      submitted: read<Record<string, boolean>>('after:submitted')?.[id] ? { page: 'confirmation', id } : { page: 'request', id, section: 'review' },
-      servicing: { page: 'credit' },
+      review: { page: 'request', id, section: 'collateral' },
+      submitted: submitted ? { page: 'confirmation', id } : { page: 'request', id, section: 'collateral' },
+      servicing: { page: 'review' },
     };
-    setRoute(map[st] ?? { page: 'pipeline' });
+    setRoute(map[st] ?? { page: 'console' });
   }, [jumpToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -83,12 +104,13 @@ function AfterInner() {
     document.getElementById('after-main')?.scrollTo({ top: 0 });
   }, [route.page, (route as { section?: string }).section, (route as { id?: string }).id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Same menu as the original console (Evaluations, Pending Review), plus Active Credit.
   const nav = [
-    { page: 'pipeline' as const, label: 'Pipeline' },
-    { page: 'underwriting' as const, label: 'Underwriting' },
-    { page: 'credit' as const, label: 'Active credit' },
+    { page: 'console' as const, label: 'Evaluations' },
+    { page: 'review' as const, label: 'Pending Review' },
+    { page: 'credit' as const, label: 'Active Credit' },
   ];
-  const activeNav = route.page === 'request' || route.page === 'confirmation' ? 'pipeline' : route.page;
+  const activeNav = route.page === 'review' || route.page === 'credit' ? route.page : 'console';
   const signOut = (reason: string) => {
     log('Signed out', reason);
     setPanelOpen(false);
@@ -109,35 +131,42 @@ function AfterInner() {
 
   return (
     <div className="sbl-after h-full flex flex-col">
-      <Header aria-label="SBL Workspace">
+      <Header aria-label="Securities Lending Console">
         <SkipToContent href="#after-main" />
-        <HeaderName href="#" prefix="" onClick={(e: React.MouseEvent) => { e.preventDefault(); setRoute({ page: 'pipeline' }); }}>
+        <HeaderMenuButton aria-label={menuOpen ? 'Close menu' : 'Open menu'} isActive={menuOpen} isCollapsible onClick={() => setMenuOpen(!menuOpen)} />
+        <HeaderName href="#" prefix="" onClick={(e: React.MouseEvent) => { e.preventDefault(); setRoute({ page: 'console' }); }}>
           <span className="inline-block w-1 h-4 bg-[var(--sbl-brand-accent)] mr-2" aria-hidden="true" />
-          SBL Workspace
+          Securities Lending Console
         </HeaderName>
-        <HeaderNavigation aria-label="Workspace">
-          {nav.map(({ page, label }) => (
-            <HeaderMenuItem
-              key={page}
-              href="#"
-              isActive={activeNav === page}
-              aria-current={activeNav === page ? 'page' : undefined}
-              onClick={(e: React.MouseEvent) => { e.preventDefault(); setRoute({ page } as Route); }}
-            >
-              {label}
-            </HeaderMenuItem>
-          ))}
-        </HeaderNavigation>
+        <p className="sbl-header-title t-heading-02" aria-hidden="true">{titleOf(route)}</p>
+        <SideNav aria-label="Menu" expanded={menuOpen} isPersistent={false} onOverlayClick={() => setMenuOpen(false)} onSideNavBlur={() => setMenuOpen(false)}>
+          <SideNavItems>
+            {nav.map(({ page, label }) => (
+              <SideNavLink
+                key={page}
+                href="#"
+                isActive={activeNav === page}
+                aria-current={activeNav === page ? 'page' : undefined}
+                onClick={(e: React.MouseEvent) => { e.preventDefault(); setRoute({ page } as Route); setMenuOpen(false); }}
+              >
+                {label}
+              </SideNavLink>
+            ))}
+          </SideNavItems>
+        </SideNav>
         <HeaderGlobalBar>
-          <GlobalSearch onOpen={setRoute} />
-          <HeaderGlobalAction aria-label={`${USERS[role]}, ${role}. Open user menu`} aria-expanded={panelOpen} isActive={panelOpen} onClick={() => setPanelOpen(!panelOpen)} tooltipAlignment="end">
+          <div className="hidden md:flex flex-col items-end justify-center pr-3 leading-tight">
+            <span className="t-body-compact-01 font-semibold">{FULL_NAME[role]}</span>
+            <span className="t-helper-01 text-[var(--cds-text-secondary)]">{ROLE_LABEL[role]} · Branch 4472</span>
+          </div>
+          <HeaderGlobalAction aria-label={`${FULL_NAME[role]}, ${ROLE_LABEL[role]}. Open user menu`} aria-expanded={panelOpen} isActive={panelOpen} onClick={() => setPanelOpen(!panelOpen)} tooltipAlignment="end">
             <UserAvatar size={20} />
           </HeaderGlobalAction>
         </HeaderGlobalBar>
         <HeaderPanel aria-label="User menu" expanded={panelOpen}>
           <div className="p-4">
-            <p className="t-heading-02">{USERS[role]}</p>
-            <p className="t-helper-01 text-[var(--cds-text-secondary)]">{role} · Private Banking</p>
+            <p className="t-heading-02">{FULL_NAME[role]}</p>
+            <p className="t-helper-01 text-[var(--cds-text-secondary)]">{ROLE_LABEL[role]} · Branch 4472</p>
             <div className="mt-6">
               <SelectField
                 label="Role (demo)"
@@ -156,9 +185,10 @@ function AfterInner() {
         </HeaderPanel>
       </Header>
       <main id="after-main" tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
-        {route.page === 'pipeline' && <Pipeline onOpen={setRoute} />}
+        {route.page === 'console' && <Console tab={route.tab ?? 'pending'} onRoute={setRoute} />}
+        {route.page === 'evaluation' && <Evaluation key={route.id} id={route.id} onRoute={setRoute} />}
         {(route.page === 'request' || route.page === 'confirmation') && <Workspace key={route.id} route={route} onRoute={setRoute} />}
-        {route.page === 'underwriting' && <Underwriting focusId={route.id} onRoute={setRoute} />}
+        {route.page === 'review' && <Underwriting focusId={route.id} onRoute={setRoute} />}
         {route.page === 'credit' && <ActiveCredit focusId={route.id} onRoute={setRoute} />}
       </main>
       <SessionGuard onExpire={() => signOut('Session timed out after inactivity')} />
@@ -196,60 +226,5 @@ function SessionGuard({ onExpire }: { onExpire: () => void }) {
     >
       <p className="t-body-01">For security, you will be signed out in <b className="tabular-nums">{m}:{s}</b> because of inactivity. Draft requests are saved.</p>
     </Modal>
-  );
-}
-
-function GlobalSearch({ onOpen }: { onOpen: (r: Route) => void }) {
-  const [q, setQ] = useState('');
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const n = norm(q);
-  type Hit = { label: string; sub: string; route: Route };
-  const hits: Hit[] = !n
-    ? []
-    : [
-        ...SCENARIOS.filter((s) => [s.primary.name, s.entityName ?? '', s.requestId, s.primary.mdmId, s.primary.powerId].some((f) => norm(f).includes(n))).map((s) => ({
-          label: s.entityName ? `${s.entityName} — ${s.primary.name}` : s.primary.name,
-          sub: `${s.requestId} · Origination · MDM ID ${s.primary.mdmId}`,
-          route: { page: 'request', id: s.id, section: 'client' } as Route,
-        })),
-        ...PIPELINE.filter((p) => p.status === 'In Underwriting' && [p.client, p.requestId, p.mdmId, p.powerId].some((f) => norm(f).includes(n))).map((p) => ({ label: p.client, sub: `${p.requestId} · In underwriting`, route: { page: 'underwriting', id: p.requestId } as Route })),
-        ...ACTIVE_LINES.filter((l) => [l.client, l.id].some((f) => norm(f).includes(n))).map((l) => ({ label: l.client, sub: `${l.id} · Active credit line`, route: { page: 'credit', id: l.id } as Route })),
-      ].slice(0, 8);
-  const choose = (h: Hit) => { onOpen(h.route); setQ(''); setOpen(false); };
-  return (
-    <div className="relative w-[min(420px,40vw)] self-center mr-2" role="search">
-      <Search
-        size="md"
-        id="global-search"
-        labelText="Search clients, requests and credit lines"
-        placeholder="Search by name, request ID, MDM ID or Power ID"
-        value={q}
-        role="combobox"
-        aria-expanded={open && hits.length > 0}
-        aria-controls="global-search-list"
-        aria-activedescendant={open && hits[active] ? `gs-${active}` : undefined}
-        onChange={(e: { target: HTMLInputElement }) => { setQ(e.target.value); setOpen(true); setActive(0); }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-        onKeyDown={(e: React.KeyboardEvent) => {
-          if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, hits.length - 1)); }
-          if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-          if (e.key === 'Enter' && hits[active]) { e.preventDefault(); choose(hits[active]); }
-        }}
-      />
-      {open && n && (
-        <ul id="global-search-list" role="listbox" aria-label="Search results" className="absolute z-[8000] left-0 right-0 top-full bg-[var(--cds-layer-01)] text-[var(--cds-text-primary)] shadow-lg max-h-80 overflow-y-auto border border-[var(--cds-border-subtle-01)]">
-          {hits.length === 0 && <li className="px-4 py-3 t-body-01 text-[var(--cds-text-secondary)]">No results for “{q}”. Check the name or identifier.</li>}
-          {hits.map((h, i) => (
-            <li key={h.sub} id={`gs-${i}`} role="option" aria-selected={i === active} onMouseDown={(e) => { e.preventDefault(); choose(h); }} className={cx('px-4 py-3 cursor-pointer', i === active ? 'bg-[var(--cds-layer-selected-01)]' : 'hover:bg-[var(--cds-layer-hover-01)]')}>
-              <div className="t-body-compact-01 font-semibold">{h.label}</div>
-              <div className="t-helper-01 text-[var(--cds-text-secondary)]">{h.sub}</div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }

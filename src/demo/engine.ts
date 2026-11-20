@@ -115,7 +115,7 @@ export interface ReadinessItem {
   id: string;
   label: string;
   done: boolean;
-  step: 'client' | 'collateral' | 'structure' | 'review';
+  step: 'customer' | 'parties' | 'loan' | 'collateral' | 'evaluation' | 'acknowledgment';
   severity: 'blocker' | 'info';
 }
 

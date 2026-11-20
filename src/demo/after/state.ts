@@ -9,7 +9,17 @@ import { evaluate, isExpired, scenarioPledgeDefaults, type ManualReview, type Re
  * not provide production security, regulatory compliance or certification.
  */
 
-export type Section = 'client' | 'collateral' | 'structure' | 'review';
+/** The four Loan Request steps, named and ordered as in the original console. */
+export type Section = 'customer' | 'parties' | 'loan' | 'collateral';
+export const STEPS: { key: Section; n: number; label: string }[] = [
+  { key: 'customer', n: 1, label: 'Customer Information' },
+  { key: 'parties', n: 2, label: 'Co-borrowers' },
+  { key: 'loan', n: 3, label: 'Loan Information' },
+  { key: 'collateral', n: 4, label: 'Collaterals' },
+];
+/** Where a readiness item is resolved: a step, the Evaluation screen, or the acknowledgment. */
+export type Place = Section | 'evaluation' | 'acknowledgment';
+const isSection = (v: unknown): v is Section => STEPS.some((x) => x.key === v);
 export type YN = '' | 'Yes' | 'No';
 export type Role = 'Relationship Banker' | 'Credit Officer';
 
@@ -47,6 +57,8 @@ export interface AfterRequest {
   coBorrowerId: string;
   coIdUpdate: { number: string; expires: string; saved: boolean };
   jointPermission: boolean;
+  /** The Yes/No answer to the joint-permission question, so a No stays selected. */
+  permAns?: YN;
   ownersCertified: boolean;
   pep: YN;
   marital: string;
@@ -54,6 +66,9 @@ export interface AfterRequest {
   q1Explain: string;
   q2: YN;
   q3: YN;
+  /** Co-borrower "Additional Information" (step 2). */
+  coPep: YN;
+  coMarital: string;
   pledged: Record<string, boolean>;
   reviews: Record<string, ManualReview>;
   reviewRequested: Record<string, string>;
@@ -62,6 +77,7 @@ export interface AfterRequest {
   useOfProceeds: '' | 'non-purpose' | 'purpose';
   purposeStatement: boolean;
   method: string;
+  rmCorrect: YN;
   wealth1: string;
   wealth2: string;
   repay1: string;
@@ -78,6 +94,8 @@ export interface AfterRequest {
   consentMethod: string;
   attest: Record<string, boolean>;
   disclosureViewed: boolean;
+  /** Steps saved with Next, as in the original step rail. */
+  completed?: Section[];
   estimateLog: EstimateEvent[];
   /** Underwriting conditions returned to the banker after submission. */
   conditions?: Condition[];
@@ -86,12 +104,13 @@ export interface AfterRequest {
   approvedAt?: string;
 }
 
+/** The five acknowledgements from the original "Acknowledgment Required" dialog, same wording and order. */
 export const ATTESTATIONS = [
-  { key: 'consent', text: 'The client authorized this credit application.' },
-  { key: 'accuracy', text: 'I reviewed the client, collateral and loan information for accuracy and completeness.' },
-  { key: 'disclosures', text: 'The client received the required disclosures for this product.' },
-  { key: 'electronic', text: 'The client consented to electronic records and signatures.' },
-  { key: 'compliance', text: 'Identity verification, sanctions screening and beneficial ownership requirements were completed.' },
+  { key: 'consent', text: 'Consent to proceed with formal loan application submission' },
+  { key: 'accuracy', text: 'Confirmation that all evaluation data and customer information is accurate and complete' },
+  { key: 'disclosures', text: 'Acknowledgment of all required regulatory disclosures and lending compliance requirements' },
+  { key: 'electronic', text: 'Agreement to electronic record-keeping and digital signature authority for application processing' },
+  { key: 'compliance', text: 'Compliance awareness regarding anti-money laundering, KYC verification, and credit decisioning protocols' },
 ];
 
 /** Fixed fictional “today” (11/19/2025) so stamps match the scenario data; time of day is live. */
@@ -100,8 +119,9 @@ export const nowStamp = () => `11/19/2025, ${new Date().toLocaleTimeString('en-U
 export function initialRequest(id: ScenarioId): AfterRequest {
   const s = scenarioById(id);
   return {
-    section: 'client',
+    section: 'customer',
     visited: [],
+    completed: [],
     appType: s.applicationType,
     coBorrowerId: '',
     coIdUpdate: { number: '', expires: '', saved: false },
@@ -114,6 +134,8 @@ export function initialRequest(id: ScenarioId): AfterRequest {
     q1Explain: '',
     q2: '',
     q3: '',
+    coPep: '',
+    coMarital: '',
     pledged: scenarioPledgeDefaults(s),
     reviews: {},
     reviewRequested: {},
@@ -122,6 +144,7 @@ export function initialRequest(id: ScenarioId): AfterRequest {
     useOfProceeds: '',
     purposeStatement: false,
     method: 'Relationship Manager Initiated',
+    rmCorrect: '',
     wealth1: '',
     wealth2: '',
     repay1: '',
@@ -179,7 +202,12 @@ export function useAudit() {
 }
 
 export function useAfterRequest(id: ScenarioId) {
-  const [req, setReq] = usePersistentState<AfterRequest>(`after:req:${id}`, () => initialRequest(id));
+  const [raw, setReq] = usePersistentState<AfterRequest>(`after:req:${id}`, () => initialRequest(id));
+  // Requests saved by an earlier version of the prototype used different step names.
+  const req = useMemo<AfterRequest>(() => {
+    if (isSection(raw.section) && raw.completed) return raw;
+    return { ...initialRequest(id), ...raw, section: isSection(raw.section) ? raw.section : 'customer', visited: raw.visited.filter(isSection), completed: raw.completed ?? [] };
+  }, [raw, id]);
   const s = scenarioById(id);
   const { log, user, role } = useAudit();
 
@@ -211,36 +239,40 @@ export function useAfterRequest(id: ScenarioId) {
   const readiness: ReadinessItem[] = useMemo(() => {
     const items: ReadinessItem[] = [];
     const add = (rid: string, label: string, done: boolean, step: ReadinessItem['step']) => items.push({ id: rid, label, done, step, severity: 'blocker' });
-    add('pep', 'Answer the politically exposed person question', !!req.pep, 'client');
-    add('questions', 'Answer the three risk questions', !!req.q1 && !!req.q2 && !!req.q3 && (req.q1 !== 'Yes' || req.q1Explain.trim().length > 0), 'client');
+    add('pep', 'Answer the politically exposed person question', !!req.pep, 'customer');
+    add('questions', 'Answer the three risk questions', !!req.q1 && !!req.q2 && !!req.q3 && (req.q1 !== 'Yes' || req.q1Explain.trim().length > 0), 'customer');
     if (req.appType === 'Joint') {
-      add('co', 'Add a co-borrower', !!co, 'client');
-      if (co) add('coid', `Update ${co.name}’s identification`, !coIdExpired, 'client');
-      add('perm', 'Confirm the co-applicant’s permission to apply jointly', req.jointPermission, 'client');
+      add('co', 'Add a co-borrower', !!co, 'parties');
+      if (co) add('copep', `Answer the politically exposed person question for ${co.name}`, !!req.coPep, 'parties');
+      if (co) add('coid', `Update ${co.name}’s identification`, !coIdExpired, 'parties');
+      add('perm', 'Confirm the co-applicant’s permission to apply jointly', req.jointPermission, 'parties');
     }
-    if (needsOwners) add('owners', isEntity ? 'Certify beneficial ownership' : 'Certify trust ownership', req.ownersCertified && owners.length > 0, 'client');
+    if (needsOwners) add('owners', isEntity ? 'Certify beneficial ownership' : 'Certify trust ownership', req.ownersCertified && owners.length > 0, 'parties');
     add('pledge', 'Pledge at least one eligible account', ev.rows.some((r) => r.pledged && r.lendable > 0), 'collateral');
-    add('review', 'Complete the credit officer review of flagged collateral', ev.needsReview === 0, 'collateral');
-    add('coverage', 'Keep the requested amount within estimated borrowing power', req.requested > 0 && ev.total >= req.requested, 'collateral');
-    add('proceeds', 'Confirm non-purpose use of proceeds and the purpose statement', req.useOfProceeds === 'non-purpose' && req.purposeStatement, 'structure');
-    add('wealth', 'Select the primary source of wealth', !!req.wealth1, 'structure');
-    add('repay', 'Select the primary source of repayment', !!req.repay1, 'structure');
-    add('sustain', 'Answer the sustainability review question', !!req.sustainability, 'structure');
-    if (req.pricing === 'exception') add('pricing', 'Enter the requested spread and justification', !!req.spread && req.pricingWhy.trim().length > 0, 'structure');
-    if (req.ach) add('ach', 'Select the ACH debit account', !!req.achAccount, 'structure');
-    add('consent', 'Record how the client authorized the application', !!req.consentMethod, 'review');
-    add('attest', 'Complete the attestations and review the acknowledgment', ATTESTATIONS.every((a) => req.attest[a.key]) && req.disclosureViewed, 'review');
+    add('review', 'Complete the manual evaluation of flagged collateral', ev.needsReview === 0, 'evaluation');
+    add('coverage', 'Keep the requested amount within the total maximum borrowing power', req.requested > 0 && ev.total >= req.requested, 'customer');
+    add('proceeds', 'Confirm non-purpose use of proceeds and the purpose statement', req.useOfProceeds === 'non-purpose' && req.purposeStatement, 'loan');
+    add('wealth', 'Select the primary source of wealth', !!req.wealth1, 'loan');
+    add('repay', 'Select the primary source of repayment', !!req.repay1, 'loan');
+    add('sustain', 'Answer the sustainability review question', !!req.sustainability, 'loan');
+    if (req.pricing === 'exception') add('pricing', 'Enter the requested spread and justification', !!req.spread && req.pricingWhy.trim().length > 0, 'loan');
+    if (req.ach) add('ach', 'Select the ACH debit account', !!req.achAccount, 'loan');
+    add('consent', 'Record how the customer authorized this application', !!req.consentMethod, 'parties');
+    add('attest', 'Complete the acknowledgment', ATTESTATIONS.every((a) => req.attest[a.key]) && req.disclosureViewed, 'acknowledgment');
     return items;
   }, [req, ev, co, coIdExpired, needsOwners, isEntity, owners.length]);
 
+  /** Completed: saved with Next and nothing open. Attention: saved or visited with items open. */
   const sectionState = (sec: Section): 'complete' | 'attention' | 'todo' => {
     const its = readiness.filter((r) => r.step === sec);
-    if (its.every((i) => i.done)) return 'complete';
-    return req.visited.includes(sec) ? 'attention' : 'todo';
+    const saved = (req.completed ?? []).includes(sec);
+    if (saved && its.every((i) => i.done)) return 'complete';
+    return saved || req.visited.includes(sec) ? (its.every((i) => i.done) ? 'todo' : 'attention') : 'todo';
   };
+  const acknowledged = ATTESTATIONS.every((a) => req.attest[a.key]) && req.disclosureViewed;
 
   const openItems = readiness.filter((r) => !r.done).length;
-  return { s, req, update, setReq, changeEstimate, ev, readiness, openItems, sectionState, needsOwners, isEntity, pledgesTrust, owners, co, coIdExpired, log, role, user };
+  return { s, req, update, acknowledged, setReq, changeEstimate, ev, readiness, openItems, sectionState, needsOwners, isEntity, pledgesTrust, owners, co, coIdExpired, log, role, user };
 }
 
 export type RequestModel = ReturnType<typeof useAfterRequest>;

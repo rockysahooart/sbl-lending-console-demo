@@ -52,32 +52,42 @@ an evaluation screen with auto and manual borrowing-power evaluation, a
 multi-step application (customer, co-borrower, loan information,
 collateral), submission, and a pending-review list.
 
-### After — the redesigned workspace
+### After — the same console, modernized
 
-Built with the **IBM Carbon Design System** (v11), adapted to a PNC-style
-blue theme:
+The business asked for modernization, not a new way of working. After keeps
+Before's information architecture: the same screens, in the same order, with
+the same sections, labels and actions where you'd expect them. It is rebuilt
+with the **IBM Carbon Design System** (v11) in a PNC-style blue theme for
+typography, spacing, colour, form controls, tables, feedback, accessibility
+and interaction states.
 
-- **Pipeline** grouped by who needs to act next (you, ready to submit,
-  another team), led by the highest-priority request and a specific next
-  action for every row. **New request** starts from the client directory and
-  sends you to any request already in progress instead of duplicating it.
-- **Request workspace** in three views — Client and parties, Collateral and
-  terms, Review and submit — with a status panel that always shows the next
-  step, the financial summary and readiness.
-- **Conversation view** for the client step: verify who you're speaking
-  with, then ask only what isn't already on file, with talking points to
-  hand. The full record is one switch away.
-- **Collateral and terms** keeps pledging, evaluation, exceptions and the
-  requested amount on one view, so the amount is set next to the borrowing
-  power it depends on.
-- **Live collateral evaluation.** Pledging an account updates estimated
-  borrowing power immediately; restricted stock is not eligible and
-  concentrated single-issuer positions are flagged for credit officer
-  review. Calculation details and an estimate history explain every number.
-- **Underwriting** returns conditions to the banker's queue ("Respond to
-  condition"); the decision follows once they are provided.
-- **Active credit** leads with lines that need attention; LTV alerts and
-  document follow-up are handled inline.
+| Before | After |
+|---|---|
+| Header: Securities Lending Console, page title, user | Same, as a Carbon UI shell |
+| Menu: Evaluations, Pending Review | Same, plus **Active Credit** (servicing has no Before screen) |
+| Console tabs: Pending Evaluations · Evaluations · Submitted Applications | Same tabs, toolbar (search by Application ID / Business Name / Primary Applicant, Filter, Last Updated sort), columns and expandable rows. Statuses reflect the request's real state. |
+| Evaluation: Customer Details · Auto Evaluation · Manual Evaluation · Total Evaluation; Back · Generate PDF · Start Request | Same sections and footer. Account selection updates Maximum Borrowing Power immediately; concentrated positions appear in Manual Evaluation for credit officer review. |
+| Acknowledgment Required (five acknowledgements, then the full acknowledgement) | Same dialog and wording, in Carbon |
+| Steps 1–4: Customer Information · Co-borrowers · Loan Information · Collaterals; Back / Next, Submit on Collaterals | Same steps, sections and footer, in a three-column layout: step progress on the left, the step in the middle, **Application status** on the right |
+| Loan Request Submitted | Same content (Download PDF, What happens next, Return to Console) |
+| Pending Review: Post-Underwriting Review Queue | Same title, toolbar and columns; **Evaluate** opens the underwriting detail, including conditions |
+
+What changed is presentation and behaviour, not the workflow:
+
+- **Application status panel** shows Requested Loan Amount against Total
+  Maximum Borrowing Power and every open item, grouped by step, each linked
+  to the field where it is completed.
+- **Submit explains itself.** If anything is open, Submit lists the items in
+  step order with **Go to** links instead of submitting an incomplete request.
+- **Progress shows real state:** Completed, In progress, Not started, or the
+  number of open items.
+- **Corrections kept from compliance review:** no preselected answers, no
+  spouse name and Regulation B marital-status values, Regulation U use of
+  proceeds, beneficial/trust ownership, and corrected product values (Before
+  shows "Texas" as the loan purpose and "Real Estate" as the security).
+- **Underwriting conditions** appear as *Condition Requested* in Submitted
+  Applications and Pending Review, with **Respond**; approval follows once
+  they are provided.
 
 ### Simulated safeguards (After only)
 
@@ -116,22 +126,23 @@ blue theme:
 
 ### Walkthrough: complex collateral with credit officer review (After)
 
-1. Enter the prototype in **After** with **Complex collateral**, and open
-   Northbridge Holdings LLC from the pipeline.
-2. The pipeline's **Review collateral** opens **Collateral and terms**. The concentrated position is flagged
-   *Review required* and estimated borrowing power falls short of the
-   requested amount.
+1. Enter the prototype in **After** with **Complex collateral**. In
+   **Pending Evaluations**, select **Evaluate** for SBL-24-10933.
+2. **Manual Evaluation** lists the concentrated position, and **Total
+   Evaluation** states the shortfall against the requested loan amount.
 3. Select **Request credit officer review**.
 4. Open the user menu (avatar, top right) and change **Role (demo)** to
    **Credit Officer**.
 5. Select **Complete review**, enter an advance rate between 35 and 60% and a
-   rationale of at least 20 characters, then **Record review**. Borrowing
-   power updates and the change appears in the estimate history.
-6. Switch back to **Relationship Banker**, complete the remaining readiness
-   items, and **Submit to underwriting**.
-7. In **Underwriting**, try **Simulate a condition**: the request returns to
-   your pipeline as **Respond to condition**. Mark it as provided, then use
-   **Simulate approval** and see the line in **Active credit**.
+   rationale of at least 20 characters, then **Record review**. Maximum
+   Borrowing Power updates and the change appears in the evaluation history.
+6. Switch back to **Relationship Banker**, select **Start Request**, complete
+   the acknowledgment, and work through the four steps. The Application
+   status panel links to anything still open. **Submit** on Collaterals.
+7. In **Pending Review**, try **Simulate a condition**: the request shows
+   *Condition Requested* with **Respond** in Submitted Applications. Mark it
+   as provided, then use **Simulate approval** and see the line in
+   **Active Credit**.
 
 ### Session metrics
 
@@ -246,11 +257,12 @@ src/
     beforeData.ts          Data adapters for the original console
     engine.ts              Collateral evaluation, eligibility and readiness rules
     after/                 AFTER — the redesigned workspace
-      AfterApp.tsx         Carbon UI shell, navigation, roles, session timeout
-      Pipeline.tsx         Pipeline and New request
+      AfterApp.tsx         Carbon UI shell, menu, roles, session timeout
+      Console.tsx          Securities Lending Console (three tabs) and queue toolbar
+      Evaluation.tsx       Evaluation screen and Acknowledgment Required dialog
       guidance.ts          Next action, exceptions and warnings per request
-      Workspace.tsx        Request workspace (three views + status panel)
-      PostUnderwriting.tsx Underwriting and Active credit
+      Workspace.tsx        Loan Request steps 1–4, status panel, Loan Request Submitted
+      PostUnderwriting.tsx Pending Review and Active Credit
       state.ts             Request model, audit trail, roles
       ui.tsx               Carbon component wrappers
       carbon.scss          Carbon styles scoped to the After experience
@@ -280,8 +292,8 @@ guidelines/                Project design guidelines
 - **Shared fictional data.** Both experiences read the same scenarios from
   `src/demo/data.ts`, so numbers can be compared directly.
 - **Equivalent steps.** Toggling Before/After maps the current step to its
-  closest counterpart (for example, Before's evaluation maps to After's
-  collateral section).
+  counterpart: the screens match one to one (Evaluation ↔ Evaluation,
+  step 3 ↔ step 3, Pending Review ↔ Pending Review).
 - **Calculations.** `engine.ts` computes eligible collateral value as
   market value × advance rate for pledged, eligible holdings, applies
   concentration limits and credit officer reviews, and produces the

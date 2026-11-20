@@ -8,12 +8,12 @@ not legal or compliance advice.
 
 | Term | Definition | Where it appears | Never say |
 |---|---|---|---|
-| **Requested amount** | The credit amount the client asked for. | Pipeline, structure, summary, confirmation | "loan amount" (ambiguous), "approved amount" |
+| **Requested Loan Amount** | The credit amount the client asked for. Before's label, kept. “Loan Amount” in Loan Details is the same value. | Console row, Evaluation, steps 1 and 3, status panel, confirmation | "approved amount" |
 | **Market value** | Current market value of a holding or account. | Collateral table, monitoring | "collateral value" (ambiguous) |
 | **Advance rate** | Percentage of market value that counts toward borrowing power. | Collateral table, calculation details, review | "LTV" (different measure), "haircut" in UI copy |
-| **Eligible collateral value** | Market value × advance rate, for pledged eligible holdings. | Collateral table | "lendable value", "loan value" |
-| **Estimated borrowing power** | Total eligible collateral value of pledged accounts. Indicative only. | Pipeline, summary, review, confirmation | "pre-approved", "available to borrow", "you qualify for", "maximum loan" |
-| **Coverage ratio** | Estimated borrowing power ÷ requested amount. | Pipeline, summary | "approval likelihood" |
+| **Maximum Borrowing Power** (per account) | Market value × advance rate, for a selected eligible account. Before's label, kept. | Evaluation, Collaterals | "loan value" |
+| **Total Maximum Borrowing Power** | Sum of Maximum Borrowing Power of selected accounts. Before's label, kept; always paired with the indicative-estimate statement. | Evaluation (Total Evaluation), step 1, status panel | "pre-approved", "available to borrow", "you qualify for" |
+| **Coverage** | Total Maximum Borrowing Power ÷ Requested Loan Amount. | Status panel | "approval likelihood" |
 | **Approved credit limit** | Limit set by underwriting after a credit decision. | Underwriting, Active credit | Any use before an underwriting decision |
 | **Outstanding balance** | Amount currently drawn. | Active credit | "loan balance" (inconsistent) |
 | **Available credit** | Approved credit limit − outstanding balance. | Active credit | "borrowing power" (post-approval) |
@@ -79,5 +79,6 @@ available” (before approval), “risk-free”, “secure” as an absolute cla
 | Session timeout modal | Timeout duration and wording | Internal security policy |
 | Active credit | “Maintenance threshold”, alert text, outreach action | Collateral maintenance policy; may trigger client notices |
 | Pricing exception | “Approval is not guaranteed.” | Pricing policy wording |
-| Client → conversation view | Talking points (indicative estimate, collateral maintenance, who decides) | Customer-facing statements about credit and collateral risk |
-| Underwriting → conditions | Condition wording returned to the banker | Underwriting policy; may be shared with the client |
+| Evaluation → Acknowledgment Required | The five acknowledgements and the full acknowledgement text (Before wording, kept for familiarity) | Banker attestations; legal effect |
+| Customer Information → Additional Information | Risk questions (Before wording; “co-borrower” corrected to “borrower(s)”) | AML due-diligence questions |
+| Pending Review → conditions | Condition wording returned to the banker | Underwriting policy; may be shared with the client |
