@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type FormEvent } from 'react';
 import { X, ArrowRight } from 'lucide-react';
 import { DISCLAIMER, SCENARIOS, scenarioById, type Mode, type ScenarioId } from './data';
-import { equivalentStage, runKey, useDemo, type RunMetrics, type Stage } from './DemoContext';
+import { runKey, useDemo, type RunMetrics } from './DemoContext';
+import { HOME, fromHash, mapLoc, sameLoc, toHash, type Loc } from './sync';
 import { useConsoleStore } from '../app/state/ConsoleStore';
 import { LoanTable } from '../app/components/LoanTable';
 import { PendingReview } from '../app/components/PendingReview';
@@ -21,6 +22,7 @@ export const beforeMenu = { open: () => {} };
  */
 export function DemoShell() {
   const { view } = useDemo();
+  useHistorySync();
   if (view !== 'app') return <Preface />;
   return (
     <div className="h-screen flex flex-col bg-[#F4F4F4]">
@@ -35,7 +37,7 @@ function DemoBar() {
   const { mode, scenario, setScenario, setView } = useDemo();
   const switchMode = useSwitchMode();
   return (
-    <nav aria-label="Prototype" className="h-10 flex-shrink-0 bg-[#161616] text-white flex items-center gap-2 sm:gap-3 px-2 sm:px-4 text-[13px] overflow-x-auto">
+    <nav aria-label="Prototype" className="demo-bar relative z-[10000] h-10 flex-shrink-0 bg-[#161616] text-white flex items-center gap-2 sm:gap-3 px-2 sm:px-4 text-[13px] overflow-x-auto">
       <button type="button" onClick={() => setView('intro')} aria-label="Back to preface" className="text-[13px] text-[#C6C6C6] hover:text-white whitespace-nowrap px-1">←<span className="hidden sm:inline" aria-hidden="true"> Preface</span></button>
       <span className="inline-flex items-center gap-1.5 sm:gap-2 h-6 px-1.5 sm:px-2 rounded-sm border border-[#6F6F6F] text-[12px] text-[#C6C6C6] whitespace-nowrap">
         <span className="w-1.5 h-1.5 rounded-full bg-[#F5A742]" aria-hidden="true" /> <span className="hidden md:inline">Portfolio Demo · Fictional Data</span><span className="md:hidden">Fictional</span>
@@ -63,17 +65,69 @@ function DemoBar() {
   );
 }
 
-/** Switch experience while landing on the equivalent stage of the same scenario. */
+/**
+ * Where a toggle landed, per experience, and where it came from. Toggling back from an
+ * unchanged landing spot returns to the exact origin, even where the mapping is lossy
+ * (an After-only record, Active Credit), so repeated toggling never drifts.
+ */
+const switchMemo: Partial<Record<Mode, { back: Loc }>> = {};
+
+/** Switch experience while landing on the equivalent screen, application and context. */
 function useSwitchMode() {
-  const { mode, setMode, stage, requestJump } = useDemo();
+  const { mode, setMode, loc, requestJump, landedAt } = useDemo();
   return useCallback(
     (m: Mode) => {
       if (m === mode) return;
-      requestJump(m, equivalentStage(mode, stage[mode]));
+      const here = loc[mode];
+      const saved = switchMemo[mode];
+      // Untouched since the last toggle landed here? Go back exactly where the user came from.
+      const target = saved && sameLoc(landedAt(mode) ?? undefined, here) ? saved.back : mapLoc(mode, here);
+      switchMemo[m] = { back: here };
+      requestJump(m, target);
       setMode(m);
     },
-    [mode, setMode, stage, requestJump],
+    [mode, setMode, loc, requestJump, landedAt],
   );
+}
+
+/**
+ * Browser history: every screen change is a history entry (#/after/step/SBL-24-10871?step=2),
+ * so Back and Forward move through screens across both experiences. Expanding a row or
+ * changing a tab replaces the current entry instead of adding one.
+ */
+function useHistorySync() {
+  const { view, setView, mode, setMode, loc, requestJump } = useDemo();
+  const applying = useRef(false);
+  const last = useRef<{ mode: Mode; loc: Loc } | null>(null);
+  useEffect(() => {
+    if (view !== 'app') return;
+    const here = loc[mode];
+    const hash = toHash(mode, here);
+    if (window.location.hash === hash) { last.current = { mode, loc: here }; applying.current = false; return; }
+    const prev = last.current;
+    const minor = prev && prev.mode === mode && prev.loc.screen === here.screen && (prev.loc.appId ?? '') === (here.appId ?? '') && (prev.loc.step ?? 0) === (here.step ?? 0);
+    if (applying.current || minor || !prev) window.history.replaceState(null, '', hash);
+    else window.history.pushState(null, '', hash);
+    applying.current = false;
+    last.current = { mode, loc: here };
+  }, [view, mode, loc]);
+  useEffect(() => {
+    if (view === 'intro' && window.location.hash) window.history.pushState(null, '', window.location.pathname + window.location.search);
+  }, [view]);
+  useEffect(() => {
+    const onPop = () => {
+      const parsed = fromHash(window.location.hash);
+      if (!parsed) { setView('intro'); return; }
+      applying.current = true;
+      // A history jump is not a toggle: forget toggle origins so the next toggle maps from here.
+      delete switchMemo.before; delete switchMemo.after;
+      setView('app');
+      requestJump(parsed.mode, parsed.loc);
+      setMode(parsed.mode);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [setView, setMode, requestJump]);
 }
 
 /* ------------------------ Experience + instrumentation ------------------------ */
@@ -102,42 +156,50 @@ function InstrumentedFrame() {
 }
 
 /** Hosts the unchanged baseline app and opens it at the requested stage. */
+type BeforePlan = { view: 'dashboard' | 'pending-review'; reviewApp?: string; initial?: NonNullable<Parameters<typeof LoanTable>[0]>['initialView'] };
+
+/** What Before should show for a location. See src/demo/sync.ts for the map. */
+function planFor(l: Loc, read: <T>(k: string) => T | undefined, write: (k: string, v: unknown) => void): BeforePlan {
+  if (l.screen === 'review') return { view: 'pending-review', reviewApp: l.appId };
+  if (l.screen === 'evaluation' || l.screen === 'acknowledgment') return { view: 'dashboard', initial: { applicationId: l.appId, view: 'evaluation', acknowledgment: l.screen === 'acknowledgment' } };
+  if ((l.screen === 'step' || l.screen === 'submitted') && l.appId) {
+    const completed = read<number[]>(`application:${l.appId}:completed`) ?? [];
+    write(`application:${l.appId}:step`, l.screen === 'submitted' ? (completed.includes(4) ? 5 : 4) : l.step ?? 1);
+    return { view: 'dashboard', initial: { applicationId: l.appId, view: 'application' } };
+  }
+  if (l.screen === 'overview') return { view: 'dashboard', initial: { applicationId: l.appId, view: 'overview', tab: 'submitted' } };
+  return { view: 'dashboard', initial: { view: 'dashboard', tab: l.tab ?? 'pending', expanded: l.expanded } };
+}
+
 function BeforeHost() {
-  const { scenario, stage, jumpToken } = useDemo();
+  const { loc, jumpToken } = useDemo();
   const { read, write } = useConsoleStore();
-  const s = scenarioById(scenario);
   const [menu, setMenu] = useState(false);
-  const [view, setView] = useState<'dashboard' | 'pending-review'>('dashboard');
+  // Start directly at the requested location, so no intermediate screen is shown or recorded in history.
+  const [plan, setPlan] = useState<BeforePlan>(() => planFor(loc.before, read, write));
   const [navCount, setNavCount] = useState(0);
-  const [initial, setInitial] = useState<NonNullable<Parameters<typeof LoanTable>[0]>['initialView']>();
+  const seen = useRef(jumpToken);
   useEffect(() => {
     beforeMenu.open = () => setMenu(true);
     return () => { beforeMenu.open = () => {}; };
   }, []);
 
+  // Later jumps while Before is showing (browser history, scenario change).
   useEffect(() => {
-    const st = stage.before;
-    const completed = read<number[]>(`application:${s.requestId}:completed`) ?? [];
-    const stepFor: Partial<Record<Stage, number>> = { customer: 1, parties: 2, loan: 3, collateral: 4, review: 4, submitted: completed.includes(4) ? 5 : 4 };
-    if (st === 'servicing') { setView('pending-review'); return; }
-    setView('dashboard');
-    if (st === 'dashboard') setInitial(undefined);
-    else if (st === 'evaluation' || st === 'acknowledgment') setInitial({ applicationId: s.requestId, view: 'evaluation' });
-    else {
-      write(`application:${s.requestId}:step`, stepFor[st] ?? 1);
-      setInitial({ applicationId: s.requestId, view: 'application' });
-    }
+    if (seen.current === jumpToken) return;
+    seen.current = jumpToken;
+    setPlan(planFor(loc.before, read, write));
     setNavCount((n) => n + 1);
   }, [jumpToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="h-full min-h-0 overflow-hidden">
-      {view === 'dashboard' ? <LoanTable key={`${navCount}-${scenario}`} onMenuClick={() => setMenu(true)} initialView={initial} /> : <PendingReview onBack={() => setView('dashboard')} />}
+      {plan.view === 'dashboard' ? <LoanTable key={navCount} onMenuClick={() => setMenu(true)} initialView={plan.initial} /> : <PendingReview key={navCount} initialApplicationId={plan.reviewApp} onBack={() => setPlan({ view: 'dashboard' })} />}
       <NavigationMenu
         isOpen={menu}
-        currentSection={view === 'pending-review' ? 'pending-review' : 'evaluations'}
+        currentSection={plan.view === 'pending-review' ? 'pending-review' : 'evaluations'}
         onClose={() => setMenu(false)}
-        onNavigate={(sec) => { setInitial(undefined); setView(sec === 'pending-review' ? 'pending-review' : 'dashboard'); setNavCount((n) => n + 1); setMenu(false); }}
+        onNavigate={(sec) => { setPlan({ view: sec === 'pending-review' ? 'pending-review' : 'dashboard' }); setNavCount((n) => n + 1); setMenu(false); }}
       />
     </div>
   );
@@ -257,7 +319,7 @@ function Preface() {
   const enter = () => {
     setScenario(startScenario);
     setMode(startMode);
-    requestJump(startMode, 'dashboard');
+    requestJump(startMode, HOME);
     setView('app');
   };
   return (

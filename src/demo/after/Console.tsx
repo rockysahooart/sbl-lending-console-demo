@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Button,
   Checkbox,
@@ -81,7 +81,7 @@ const TABS: { key: ConsoleTab; label: string }[] = [
 
 const money = (n: number, short = false) => <span className={cx('font-semibold tabular-nums', short && 'text-[var(--cds-text-error)]')}>{fmtMoney(n)}</span>;
 
-export function Console({ tab, onRoute }: { tab: ConsoleTab; onRoute: (r: Route) => void }) {
+export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?: string; onRoute: (r: Route) => void }) {
   // Fixed order of hook calls (three scenarios).
   const models = (['single', 'joint', 'complex'] as ScenarioId[]).map((id) => useAfterRequest(id));
 
@@ -209,6 +209,11 @@ export function Console({ tab, onRoute }: { tab: ConsoleTab; onRoute: (r: Route)
   const submittedScenario = scenarioRows.filter((_, i) => models[i].req.status !== 'draft');
   const draftScenario = scenarioRows.filter((_, i) => models[i].req.status === 'draft');
   const rows = tab === 'submitted' ? [...submittedScenario, ...submittedRefs] : [...draftScenario, ...pendingRefs];
+  // Arriving with an expanded application that lives in the other queue (e.g. already submitted here): open that queue.
+  const other = tab === 'submitted' ? [...draftScenario, ...pendingRefs] : [...submittedScenario, ...submittedRefs];
+  useEffect(() => {
+    if (expanded && !rows.some((r) => r.applicationId === expanded) && other.some((r) => r.applicationId === expanded)) onRoute({ page: 'console', tab: tab === 'submitted' ? 'pending' : 'submitted', expanded });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="px-4 sm:px-8 py-6 w-page mx-auto">
@@ -222,7 +227,10 @@ export function Console({ tab, onRoute }: { tab: ConsoleTab; onRoute: (r: Route)
               <TabPanel key={t.key} className="!p-0">
                 {t.key === tab && (
                   <QueueTable
+                    key={tab}
                     rows={rows}
+                    initialExpanded={expanded}
+                    onExpandedChange={(id) => onRoute({ page: 'console', tab, expanded: id })}
                     onRoute={onRoute}
                     empty={tab === 'submitted' ? 'No submitted applications.' : 'No evaluations are pending. Submitted requests are in Submitted Applications.'}
                   />
@@ -238,7 +246,7 @@ export function Console({ tab, onRoute }: { tab: ConsoleTab; onRoute: (r: Route)
 
 const ts = (d: string) => { const [mm, dd, yy] = d.split(',')[0].split('/').map(Number); return new Date(yy, mm - 1, dd).getTime() || 0; };
 
-function QueueTable({ rows, onRoute, empty }: { rows: Row[]; onRoute: (r: Route) => void; empty: string }) {
+function QueueTable({ rows, onRoute, empty, initialExpanded, onExpandedChange }: { rows: Row[]; onRoute: (r: Route) => void; empty: string; initialExpanded?: string; onExpandedChange: (applicationId?: string) => void }) {
   const [by, setBy] = useState<SearchBy>('id');
   const [q, setQ] = useState('');
   const [newest, setNewest] = useState(true);
@@ -246,9 +254,12 @@ function QueueTable({ rows, onRoute, empty }: { rows: Row[]; onRoute: (r: Route)
   const [types, setTypes] = useState<string[]>([]);
   const [withExceptions, setWithExceptions] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [expanded, setExpanded] = useState<string[]>([]);
+  const startRow = initialExpanded ? rows.find((r) => r.applicationId === initialExpanded) : undefined;
+  const [expanded, setExpandedState] = useState<string[]>(startRow ? [startRow.key] : []);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  // The most recently expanded row is the one the Before/After toggle carries.
+  const setExpanded = (next: string[]) => { setExpandedState(next); onExpandedChange(rows.find((r) => r.key === next[next.length - 1])?.applicationId); };
   const allStatuses = [...new Set(rows.map((r) => r.status))];
   const allTypes = [...new Set(rows.map((r) => r.type))];
   const filters = statuses.length + types.length + (withExceptions ? 1 : 0);
@@ -263,6 +274,13 @@ function QueueTable({ rows, onRoute, empty }: { rows: Row[]; onRoute: (r: Route)
       .filter((r) => !withExceptions || r.exceptions.length > 0)
       .sort((a, b) => (newest ? ts(b.lastUpdated) - ts(a.lastUpdated) : ts(a.lastUpdated) - ts(b.lastUpdated)));
   }, [rows, q, by, newest, statuses, types, withExceptions]);
+  // Open on the page that holds the expanded row.
+  useEffect(() => {
+    if (!startRow) return;
+    const i = shown.findIndex((r) => r.key === startRow.key);
+    if (i >= 0) setPage(Math.floor(i / pageSize) + 1);
+    requestAnimationFrame(() => document.querySelector('.queue-table tr.is-expanded')?.scrollIntoView({ block: 'center' }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const pages = Math.max(1, Math.ceil(shown.length / pageSize));
   const cur = Math.min(page, pages);
   const visible = shown.slice((cur - 1) * pageSize, cur * pageSize);

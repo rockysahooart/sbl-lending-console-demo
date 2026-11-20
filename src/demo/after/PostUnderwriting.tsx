@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActionableNotification, Button, Checkbox, InlineNotification, Modal, Pagination, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow } from '@carbon/react';
 import { CheckmarkFilled, Time } from '@carbon/icons-react';
 import { ACTIVE_LINES, PIPELINE, fmtMoney, fmtPct, type ActiveLine, type ScenarioId } from '../data';
@@ -16,7 +16,7 @@ function useScenarioLines() {
 /** Approved limit used by the simulated decision: lower of requested amount and estimated borrowing power, rounded down to $10,000. */
 const approvedLimit = (requested: number, power: number) => Math.floor(Math.min(requested, power) / 10000) * 10000;
 
-export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: (r: Route) => void }) {
+export function Underwriting({ focusId, onRoute, onSelect }: { focusId?: string; onRoute: (r: Route) => void; onSelect?: (id?: string) => void }) {
   const lines = useScenarioLines();
   const { log } = useAudit();
   const [confirmFor, setConfirmFor] = useState<string | null>(null);
@@ -40,7 +40,10 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
       .filter((r) => !statuses.length || statuses.includes(underwriterStatus(r)))
       .sort((a, b) => (newest ? ts(b.submitted) - ts(a.submitted) : ts(a.submitted) - ts(b.submitted)));
   }, [rows, q, by, newest, statuses]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [sel, setSel] = useState<string | undefined>(focusId && rows.some((r) => r.key === focusId) ? focusId : undefined);
+  const [sel, setSelState] = useState<string | undefined>(focusId && rows.some((r) => r.key === focusId) ? focusId : undefined);
+  const setSel = (id?: string) => { setSelState(id); onSelect?.(id); };
+  // Arriving with an application selected (Before/After toggle, history): bring its detail into view.
+  useEffect(() => { if (sel) setTimeout(() => { const el = document.getElementById('review-detail'); el?.scrollIntoView({ block: 'start' }); el?.focus({ preventScroll: true }); }, 80); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const cur = rows.find((r) => r.key === sel);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -248,7 +251,7 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
 
 interface LineVM extends ActiveLine { scenarioId?: ScenarioId }
 
-export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: (r: Route) => void }) {
+export function ActiveCredit({ focusId, onRoute, onSelect }: { focusId?: string; onRoute: (r: Route) => void; onSelect?: (id?: string) => void }) {
   const lines = useScenarioLines();
   const { global, setGlobal, log } = useAudit();
   const [confirmSign, setConfirmSign] = useState<string | null>(null);
@@ -277,7 +280,14 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
   const [lps, setLps] = useState(10);
   const linePages = Math.max(1, Math.ceil(all.length / lps));
   const lineVisible = all.slice((Math.min(lp, linePages) - 1) * lps, Math.min(lp, linePages) * lps);
-  const [sel, setSel] = useState(focusId && all.some((l) => l.id === focusId) ? focusId : all[0].id);
+  const [sel, setSelState] = useState(focusId && all.some((l) => l.id === focusId) ? focusId : all[0].id);
+  const setSel = (id: string) => { setSelState(id); onSelect?.(id); };
+  useEffect(() => {
+    if (!focusId || focusId !== sel) return;
+    const i = all.findIndex((l) => l.id === focusId);
+    if (i >= lps) setLp(Math.floor(i / lps) + 1);
+    setTimeout(() => { const el = document.getElementById('credit-detail'); el?.scrollIntoView({ block: 'start' }); el?.focus({ preventScroll: true }); }, 80);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const cur = all.find((l) => l.id === sel) ?? all[0];
   const ltv = (l: LineVM) => (l.collateralValue ? l.outstanding / l.collateralValue : 0);
   const nearCall = (l: LineVM) => ltv(l) >= l.maintenanceLtv - 0.1;

@@ -64,11 +64,12 @@ export function EvalSection({ id, title, metric, children, defaultOpen = true }:
   );
 }
 
-export function Evaluation({ id, onRoute }: { id: ScenarioId; onRoute: (r: Route) => void }) {
+export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck }: { id: ScenarioId; onRoute: (r: Route) => void; ack?: boolean; onAck?: (open: boolean) => void }) {
   const m = useAfterRequest(id);
   const { s, req, ev, changeEstimate, acknowledged, update } = m;
   const { scenario, adoptScenario } = useDemo();
-  const [ack, setAck] = useState(false);
+  const [ack, setAckState] = useState(ackOpen);
+  const setAck = (open: boolean) => { setAckState(open); onAck?.(open); };
   const [pdf, setPdf] = useState(false);
   useEffect(() => { if (scenario !== id) adoptScenario(id); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -14,6 +14,8 @@ interface EvaluationProps {
   requestedAmount: string;
   onBack: () => void;
   onStartApplication?: (totalBorrowingPower: number) => void;
+  /** Demo navigation: open with the Acknowledgment Required dialog showing (Before/After toggle). */
+  initialAcknowledgment?: boolean;
   /** Accounts to evaluate (demo scenarios); defaults to the original sample set. */
   accounts?: AutoAccount[];
 }
@@ -121,6 +123,7 @@ export function Evaluation({
   onBack,
   onStartApplication,
   accounts,
+  initialAcknowledgment,
 }: EvaluationProps) {
   const key = (name: string) => `evaluation:${applicationId}:${name}`;
   const [expanded, setExpanded] = usePersistentState(key('sections'), () => ({
@@ -157,7 +160,7 @@ export function Evaluation({
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = usePersistentState<Record<string, AssetCategory>>(key('tabs'), () => ({}));
   const [highlightedValues, setHighlightedValues] = useState<Set<string>>(new Set());
-  const [showAcknowledgment, setShowAcknowledgment] = useState(false);
+  const [showAcknowledgment, setShowAcknowledgment] = useState(!!initialAcknowledgment);
   const [announcement, setAnnouncement] = useState('');
   const pendingScrollId = useRef<string | null>(null);
 
@@ -180,6 +183,7 @@ export function Evaluation({
   }, [totalBorrowingPower]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     demo?.reportStage('before', showAcknowledgment ? 'acknowledgment' : 'evaluation');
+    demo?.reportLocation('before', { screen: showAcknowledgment ? 'acknowledgment' : 'evaluation', appId: applicationId });
   }, [showAcknowledgment]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const allAutoSelected = autoAccounts.every(acc => acc.selected);

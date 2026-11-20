@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useDemoOptional } from '../../demo/DemoContext';
 import { Header } from './Header';
 import { DecisionModal, DecisionData } from './DecisionModal';
 import { Search, Filter, ArrowUpDown } from 'lucide-react';
@@ -21,13 +22,22 @@ const mockPendingReviewData: PendingReviewApplication[] = BASELINE_REVIEW as Pen
 
 interface PendingReviewProps {
   onBack: () => void;
+  /** Demo navigation: open with this application's decision dialog (Before/After toggle). */
+  initialApplicationId?: string;
 }
 
 // onBack is kept for API compatibility; the header menu now opens navigation.
-export function PendingReview(_props: PendingReviewProps) {
+export function PendingReview({ initialApplicationId }: PendingReviewProps) {
   const [applications, setApplications] = useState<PendingReviewApplication[]>(mockPendingReviewData);
-  const [selectedApplication, setSelectedApplication] = useState<PendingReviewApplication | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const initialApp = initialApplicationId ? mockPendingReviewData.find((a) => a.applicationId === initialApplicationId) ?? null : null;
+  const [selectedApplication, setSelectedApplication] = useState<PendingReviewApplication | null>(initialApp);
+  const [isModalOpen, setIsModalOpen] = useState(!!initialApp);
+  // Demo navigation: report the open application so the toggle can follow it.
+  const demo = useDemoOptional();
+  const openId = isModalOpen ? selectedApplication?.applicationId : undefined;
+  useEffect(() => {
+    demo?.reportLocation('before', { screen: 'review', appId: openId });
+  }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [decisionNote, setDecisionNote] = useState('');
 
   // Search, Filter, Sort State

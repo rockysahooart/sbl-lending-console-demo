@@ -188,6 +188,7 @@ export function LoanApplication({
   useEffect(() => {
     const map: Record<number, Stage> = { 1: 'customer', 2: 'parties', 3: 'loan', 4: 'collateral', 5: 'submitted' };
     demo?.reportStage('before', map[currentStep] ?? 'customer');
+    demo?.reportLocation('before', currentStep >= 5 ? { screen: 'submitted', appId: applicationId } : { screen: 'step', appId: applicationId, step: currentStep as 1 | 2 | 3 | 4 });
   }, [currentStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const scrollToTop = () =>

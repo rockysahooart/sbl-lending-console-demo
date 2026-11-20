@@ -43,21 +43,33 @@ const tabs = ['Pending Evaluations', 'Evaluations', 'Submitted Applications'];
 interface LoanTableProps {
   onMenuClick?: () => void;
   /** Demo: open directly at a request's evaluation or application. */
-  initialView?: { applicationId: string; view: 'dashboard' | 'evaluation' | 'application' | 'submitted' };
+  initialView?: {
+    applicationId?: string;
+    view: 'dashboard' | 'evaluation' | 'application' | 'submitted' | 'overview';
+    /** Demo navigation (Before/After toggle): queue tab, expanded row, acknowledgment dialog. */
+    tab?: 'pending' | 'evaluations' | 'submitted';
+    expanded?: string;
+    acknowledgment?: boolean;
+  };
 }
 
 export function LoanTable({ onMenuClick, initialView }: LoanTableProps = {}) {
   const { read } = useConsoleStore();
   const startLoan = initialView ? mockData.find(l => l.applicationId === initialView.applicationId) ?? null : null;
-  const [selectedTab, setSelectedTab] = useState(initialView?.view === 'submitted' ? 2 : 0);
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const startTab = initialView?.view === 'submitted' || initialView?.view === 'overview' || initialView?.tab === 'submitted' ? 2 : initialView?.tab === 'evaluations' ? 1 : 0;
+  const [selectedTab, setSelectedTab] = useState(startTab);
+  const [expandedRow, setExpandedRow] = useState<string | null>(
+    initialView?.expanded ? [...mockData, ...submittedApplicationsData].find(l => l.applicationId === initialView.expanded)?.id ?? null : null,
+  );
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [visibleHistory, setVisibleHistory] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [evaluatingLoan, setEvaluatingLoan] = useState<LoanApplication | null>(
     startLoan && (initialView?.view === 'evaluation' || initialView?.view === 'application') ? startLoan : null,
   );
-  const [viewingLoan, setViewingLoan] = useState<LoanApplication | null>(null);
+  const [viewingLoan, setViewingLoan] = useState<LoanApplication | null>(
+    initialView?.view === 'overview' ? submittedApplicationsData.find(l => l.applicationId === initialView.applicationId) ?? null : null,
+  );
   const [applicationLoan, setApplicationLoan] = useState<{
     loan: LoanApplication;
     totalBorrowingPower: number;
@@ -73,6 +85,13 @@ export function LoanTable({ onMenuClick, initialView }: LoanTableProps = {}) {
   useEffect(() => {
     if (onList) demo?.reportStage('before', 'dashboard' as Stage);
   }, [onList]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Demo navigation: report tab, expanded row and overview so the Before/After toggle can follow them.
+  useEffect(() => {
+    if (!onList) return;
+    const tabKey = (['pending', 'evaluations', 'submitted'] as const)[selectedTab];
+    const expandedApp = expandedRow ? [...mockData, ...submittedApplicationsData].find(l => l.id === expandedRow)?.applicationId : undefined;
+    demo?.reportLocation('before', viewingLoan ? { screen: 'overview', appId: viewingLoan.applicationId, tab: tabKey } : { screen: 'console', tab: tabKey, expanded: expandedApp });
+  }, [onList, selectedTab, expandedRow, viewingLoan]); // eslint-disable-line react-hooks/exhaustive-deps
   // Opening a scenario request makes it the demo's current scenario.
   const openScenario = (evaluatingLoan as (LoanApplication & { scenarioId?: string }) | null)?.scenarioId;
   useEffect(() => {
@@ -198,6 +217,7 @@ export function LoanTable({ onMenuClick, initialView }: LoanTableProps = {}) {
           loanPurpose={evaluatingLoan.expandedDetails.loanPurpose}
           requestedAmount={evaluatingLoan.expandedDetails.loanAmount}
           accounts={baselineAutoAccounts(evaluatingLoan.applicationId)}
+          initialAcknowledgment={initialView?.acknowledgment && initialView.applicationId === evaluatingLoan.applicationId}
           onBack={() => setEvaluatingLoan(null)}
           onStartApplication={(totalBorrowingPower) => {
             // Keep the evaluation context so Back from step 1 returns to it.

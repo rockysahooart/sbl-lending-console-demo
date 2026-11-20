@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Mode, ScenarioId } from './data';
+import { HOME, stageOfLoc, type Loc } from './sync';
 
 /**
  * Canonical workflow stages shared by both experiences, so the Before/After
@@ -59,9 +60,15 @@ interface DemoValue {
   stage: Record<Mode, Stage>;
   /** Experiences report where they are; counts navigations. */
   reportStage: (mode: Mode, stage: Stage) => void;
-  /** Bumped when the shell asks an experience to jump to `stage[mode]`. */
+  /** Where each experience is: screen, application, tab, expanded row, step. */
+  loc: Record<Mode, Loc>;
+  /** Experiences report their full location after every navigation. */
+  reportLocation: (mode: Mode, loc: Loc) => void;
+  /** Bumped when the shell asks an experience to jump to `loc[mode]`. */
   jumpToken: number;
-  requestJump: (mode: Mode, stage: Stage) => void;
+  requestJump: (mode: Mode, loc: Loc) => void;
+  /** Where an experience actually landed after its last jump (first location it reported). */
+  landedAt: (mode: Mode) => Loc | null;
   metrics: Record<string, RunMetrics>;
   track: (kind: 'interaction' | 'field' | 'error', mode?: Mode, count?: number) => void;
   resetRun: (mode: Mode, scenario: ScenarioId) => void;
@@ -77,6 +84,9 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [scenario, setScenarioState] = useState<ScenarioId>('single');
   const [stage, setStage] = useState<Record<Mode, Stage>>({ before: 'dashboard', after: 'dashboard' });
   const [jumpToken, setJumpToken] = useState(0);
+  const [loc, setLoc] = useState<Record<Mode, Loc>>({ before: HOME, after: HOME });
+  const locRef = useRef(loc);
+  const setLocBoth = (next: Record<Mode, Loc>) => { locRef.current = next; setLoc(next); };
   const [metrics, setMetrics] = useState<Record<string, RunMetrics>>({});
   const live = useRef({ mode, scenario });
   live.current = { mode, scenario };
@@ -132,8 +142,21 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     setMetrics((prev) => ({ ...prev, [runKey(m, s)]: emptyRun() }));
   }, []);
 
-  const requestJump = useCallback((m: Mode, st: Stage) => {
-    setStageBoth({ ...stageRef.current, [m]: st });
+  const landing = useRef<Record<Mode, boolean>>({ before: false, after: false });
+  const landed = useRef<Record<Mode, Loc | null>>({ before: null, after: null });
+  const landedAt = useCallback((m: Mode) => landed.current[m], []);
+  const reportLocation = useCallback((m: Mode, l: Loc) => {
+    if (landing.current[m]) { landing.current[m] = false; landed.current[m] = l; }
+    const cur = locRef.current[m];
+    if (JSON.stringify(cur) !== JSON.stringify(l)) setLocBoth({ ...locRef.current, [m]: l });
+    reportStage(m, stageOfLoc(l));
+  }, [reportStage]);
+
+  const requestJump = useCallback((m: Mode, l: Loc) => {
+    landing.current[m] = true;
+    landed.current[m] = l;
+    setLocBoth({ ...locRef.current, [m]: l });
+    setStageBoth({ ...stageRef.current, [m]: stageOfLoc(l) });
     setJumpToken((t) => t + 1);
   }, []);
 
@@ -141,14 +164,15 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const setScenario = useCallback((s: ScenarioId) => {
     setScenarioState(s);
     setStageBoth({ before: 'dashboard', after: 'dashboard' });
+    setLocBoth({ before: HOME, after: HOME });
     setJumpToken((t) => t + 1);
   }, []);
 
   const adoptScenario = useCallback((s: ScenarioId) => setScenarioState(s), []);
 
   const value = useMemo(
-    () => ({ view, setView, mode, setMode, scenario, setScenario, adoptScenario, stage, reportStage, jumpToken, requestJump, metrics, track, resetRun, recordGaps }),
-    [view, mode, setMode, scenario, setScenario, adoptScenario, stage, reportStage, jumpToken, requestJump, metrics, track, resetRun, recordGaps],
+    () => ({ view, setView, mode, setMode, scenario, setScenario, adoptScenario, stage, reportStage, loc, reportLocation, jumpToken, requestJump, landedAt, metrics, track, resetRun, recordGaps }),
+    [view, mode, setMode, scenario, setScenario, adoptScenario, stage, reportStage, loc, reportLocation, jumpToken, requestJump, landedAt, metrics, track, resetRun, recordGaps],
   );
   return <DemoCtx.Provider value={value}>{children}</DemoCtx.Provider>;
 }
@@ -162,17 +186,4 @@ export function useDemo() {
 /** Safe variant for baseline components that can also run outside the demo. */
 export function useDemoOptional() {
   return useContext(DemoCtx);
-}
-
-/** Map a stage of one experience to the equivalent stage of the other. */
-export function equivalentStage(from: Mode, st: Stage): Stage {
-  if (from === 'before') {
-    // After merges evaluation + collateral, and moves attestations into Review.
-    if (st === 'evaluation') return 'collateral';
-    if (st === 'acknowledgment') return 'review';
-    return st;
-  }
-  if (st === 'review') return 'collateral';
-  if (st === 'servicing') return 'dashboard';
-  return st;
 }

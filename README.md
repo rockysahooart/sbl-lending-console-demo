@@ -280,7 +280,8 @@ src/
     components/            BEFORE — the original console screens
     state/ConsoleStore.tsx State that persists across screen changes and toggles
   demo/
-    Shell.tsx              Preface, prototype top bar, Before host, session metrics
+    Shell.tsx              Preface, prototype top bar, Before host, toggle and history sync
+    sync.ts                Before ↔ After location map (screens, applications, tabs, rows)
     DemoContext.tsx        Mode, scenario, stage mapping, metrics instrumentation
     data.ts                Fictional clients, accounts, scenarios, disclaimer
     beforeData.ts          Data adapters for the original console
@@ -322,15 +323,35 @@ guidelines/                Project design guidelines
   `.sbl-after`, so the Before experience keeps its original look.
 - **Shared fictional data.** Both experiences read the same scenarios from
   `src/demo/data.ts`, so numbers can be compared directly.
-- **Equivalent steps.** Toggling Before/After maps the current step to its
-  counterpart: the screens match one to one (Evaluation ↔ Evaluation,
-  step 3 ↔ step 3, Pending Review ↔ Pending Review).
+- **Context-aware toggle.** Each experience reports where the user is
+  (screen, application, queue tab, expanded row, step). The toggle converts
+  that through an explicit map (`src/demo/sync.ts`) and opens the equivalent
+  in the other experience:
+
+  | Where you are | Where the toggle takes you |
+  |---|---|
+  | Console tab + expanded row | Same tab, same row expanded |
+  | Evaluation / Acknowledgment Required | Same application's Evaluation / the dialog open |
+  | Steps 1–4 (including After's Beneficial / Trust Ownership) | Same step, same borrower (ownership → Co-borrowers) |
+  | Loan Request Submitted | Submitted, or step 4 if not yet submitted there |
+  | Before "View" on a submitted application | After Pending Review (credit lines: Active Credit) |
+  | Pending Review with an application open | Same application open, where it exists in both queues |
+  | After Active Credit line | Before Submitted Applications with that line expanded |
+  | After-only fictional record | Before Pending Evaluations (closest parent) |
+
+  Where no exact equivalent exists, the toggle opens the closest parent and
+  remembers where you came from, so toggling straight back returns to the
+  exact screen. The toggle never resets to the dashboard. Every screen change
+  is also a browser history entry (for example
+  `#/after/step/SBL-24-10904?step=2`), so Back and Forward work across both
+  experiences.
 - **Calculations.** `engine.ts` computes eligible collateral value as
   market value × advance rate for pledged, eligible holdings, applies
   concentration limits and credit officer reviews, and produces the
   readiness checklist. Advance rates and thresholds are fictional.
 - **In-memory state.** Nothing is stored on a server or in browser storage;
-  a reload resets everything.
+  a reload resets everything. The URL hash records the current screen for
+  browser history within a session.
 
 ---
 

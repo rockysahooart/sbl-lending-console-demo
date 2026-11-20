@@ -9,7 +9,8 @@ import { Header, HeaderGlobalAction, HeaderGlobalBar, HeaderMenuButton, HeaderNa
 import { UserAvatar } from '@carbon/icons-react';
 import { useDemo, type Stage } from '../DemoContext';
 import { usePersistentState } from '../../app/state/ConsoleStore';
-import type { ScenarioId } from '../data';
+import { SCENARIOS, type ScenarioId } from '../data';
+import { scenarioOfApp, type Loc } from '../sync';
 import { SelectField } from './ui';
 import { Console } from './Console';
 import { Evaluation } from './Evaluation';
@@ -24,8 +25,8 @@ import { useConsoleStore } from '../../app/state/ConsoleStore';
 
 export type ConsoleTab = 'pending' | 'evaluations' | 'submitted';
 export type Route =
-  | { page: 'console'; tab?: ConsoleTab }
-  | { page: 'evaluation'; id: ScenarioId }
+  | { page: 'console'; tab?: ConsoleTab; expanded?: string }
+  | { page: 'evaluation'; id: ScenarioId; ack?: boolean }
   | { page: 'record'; id: string }
   | { page: 'request'; id: ScenarioId; section: Section }
   | { page: 'confirmation'; id: ScenarioId }
@@ -33,6 +34,34 @@ export type Route =
   | { page: 'credit'; id?: string };
 
 const SECTION_STAGE: Record<Section, Stage> = { customer: 'customer', parties: 'parties', loan: 'loan', collateral: 'collateral' };
+const reqId = (id: ScenarioId) => SCENARIOS.find((x) => x.id === id)!.requestId;
+
+/** After route → shared location (src/demo/sync.ts). */
+export function routeToLoc(r: Route): Loc {
+  switch (r.page) {
+    case 'console': return { screen: 'console', tab: r.tab ?? 'pending', expanded: r.expanded };
+    case 'evaluation': return { screen: r.ack ? 'acknowledgment' : 'evaluation', appId: reqId(r.id) };
+    case 'record': return { screen: 'record', appId: r.id };
+    case 'request': return { screen: 'step', appId: reqId(r.id), step: (STEPS.findIndex((x) => x.key === r.section) + 1) as 1 | 2 | 3 | 4 };
+    case 'confirmation': return { screen: 'submitted', appId: reqId(r.id) };
+    case 'review': return { screen: 'review', appId: r.id };
+    case 'credit': return { screen: 'credit', appId: r.id };
+  }
+}
+
+/** Shared location → After route. Where After can't show it, the closest parent. */
+export function locToRoute(l: Loc, submitted: (id: ScenarioId) => boolean): Route {
+  const sid = scenarioOfApp(l.appId);
+  switch (l.screen) {
+    case 'record': return { page: 'record', id: l.appId ?? '' };
+    case 'evaluation': case 'acknowledgment': return sid ? { page: 'evaluation', id: sid, ack: l.screen === 'acknowledgment' } : { page: 'console' };
+    case 'step': return sid ? { page: 'request', id: sid, section: STEPS[(l.step ?? 1) - 1].key } : { page: 'console' };
+    case 'submitted': return sid ? (submitted(sid) ? { page: 'confirmation', id: sid } : { page: 'request', id: sid, section: 'collateral' }) : { page: 'console', tab: 'submitted' };
+    case 'review': case 'overview': return (l.appId ?? '').startsWith('LOC-') ? { page: 'credit', id: l.appId } : { page: 'review', id: l.appId };
+    case 'credit': return { page: 'credit', id: l.appId };
+    default: return { page: 'console', tab: l.tab ?? 'pending', expanded: l.expanded };
+  }
+}
 
 export function stageOf(r: Route): Stage {
   if (r.page === 'console' || r.page === 'record') return 'dashboard';
@@ -69,7 +98,7 @@ export function AfterApp() {
 }
 
 function AfterInner() {
-  const { scenario, stage, jumpToken, reportStage } = useDemo();
+  const { loc, jumpToken, reportLocation } = useDemo();
   const { read } = useConsoleStore();
   const [stored, setRoute] = usePersistentState<Route>('after:route', () => ({ page: 'console' }));
   const route: Route = isRoute(stored) ? stored : { page: 'console' };
@@ -78,33 +107,32 @@ function AfterInner() {
   const [signedOut, setSignedOut] = useState(false);
   const { role, log, setGlobal } = useAudit();
 
-  // Shell-driven jumps (Before/After toggle, scenario change).
+  // Shell-driven jumps (Before/After toggle, browser history, scenario change). See src/demo/sync.ts.
   const lastJump = useRef(-1);
+  const pending = useRef<string | null>(null);
+  const [jumpKey, setJumpKey] = useState(0);
   useEffect(() => {
     if (lastJump.current === jumpToken) return;
     lastJump.current = jumpToken;
-    const st = stage.after;
-    const id = scenario;
-    const submitted = read<Record<string, boolean>>('after:submitted')?.[id];
-    const map: Partial<Record<Stage, Route>> = {
-      dashboard: { page: 'console' },
-      evaluation: { page: 'evaluation', id },
-      acknowledgment: { page: 'evaluation', id },
-      customer: { page: 'request', id, section: 'customer' },
-      parties: { page: 'request', id, section: 'parties' },
-      loan: { page: 'request', id, section: 'loan' },
-      collateral: { page: 'request', id, section: 'collateral' },
-      review: { page: 'request', id, section: 'collateral' },
-      submitted: submitted ? { page: 'confirmation', id } : { page: 'request', id, section: 'collateral' },
-      servicing: { page: 'review' },
-    };
-    setRoute(map[st] ?? { page: 'console' });
+    const done = read<Record<string, boolean>>('after:submitted') ?? {};
+    const next = locToRoute(loc.after, (id) => !!done[id]);
+    pending.current = JSON.stringify(routeToLoc(next));
+    setRoute(next);
+    setJumpKey((k) => k + 1);
   }, [jumpToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Report the full location after every navigation; the toggle follows it.
+  // While a jump is being applied, the previous screen is not reported (it would add a stray history entry).
+  const locKey = JSON.stringify(routeToLoc(route));
   useEffect(() => {
-    reportStage('after', stageOf(route));
+    if (pending.current) { if (pending.current !== locKey) return; pending.current = null; }
+    reportLocation('after', routeToLoc(route));
+  }, [locKey, jumpKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // New screen or new application: start at the top. (Expanding a row or selecting a line doesn't scroll.)
+  const scrollKey = route.page === 'review' || route.page === 'credit' || route.page === 'console' ? route.page : `${route.page}:${(route as { id?: string }).id}:${(route as { section?: string }).section ?? ''}`;
+  useEffect(() => {
     document.getElementById('after-main')?.scrollTo({ top: 0 });
-  }, [route.page, (route as { section?: string }).section, (route as { id?: string }).id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [scrollKey]);
 
   // Same menu as the original console (Evaluations, Pending Review), plus Active Credit.
   const nav = [
@@ -187,12 +215,12 @@ function AfterInner() {
         </HeaderPanel>
       </Header>
       <main id="after-main" tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
-        {route.page === 'console' && <Console tab={route.tab ?? 'pending'} onRoute={setRoute} />}
+        {route.page === 'console' && <Console key={`c${jumpKey}`} tab={route.tab ?? 'pending'} expanded={route.expanded} onRoute={setRoute} />}
         {route.page === 'record' && <Record key={route.id} id={route.id} onRoute={setRoute} />}
-        {route.page === 'evaluation' && <Evaluation key={route.id} id={route.id} onRoute={setRoute} />}
+        {route.page === 'evaluation' && <Evaluation key={`${route.id}-${jumpKey}`} id={route.id} ack={!!route.ack} onAck={(a) => setRoute({ page: 'evaluation', id: route.id, ack: a })} onRoute={setRoute} />}
         {(route.page === 'request' || route.page === 'confirmation') && <Workspace key={route.id} route={route} onRoute={setRoute} />}
-        {route.page === 'review' && <Underwriting focusId={route.id} onRoute={setRoute} />}
-        {route.page === 'credit' && <ActiveCredit focusId={route.id} onRoute={setRoute} />}
+        {route.page === 'review' && <Underwriting key={`u${jumpKey}`} focusId={route.id} onSelect={(id) => setRoute({ page: 'review', id })} onRoute={setRoute} />}
+        {route.page === 'credit' && <ActiveCredit key={`a${jumpKey}`} focusId={route.id} onSelect={(id) => setRoute({ page: 'credit', id })} onRoute={setRoute} />}
       </main>
       <SessionGuard onExpire={() => signOut('Session timed out after inactivity')} />
     </div>
