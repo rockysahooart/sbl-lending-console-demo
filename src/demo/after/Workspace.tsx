@@ -762,7 +762,7 @@ function StatusPanel({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: string
   const done = readiness.filter((r) => r.done).length;
   const events = audit.filter((e) => e.requestId === s.requestId);
   return (
-    <aside aria-label="Application status" className="xl:sticky xl:top-6 bg-[var(--cds-layer-01)] lg:col-span-2 xl:col-span-1">
+    <aside aria-label="Application status" className="status-panel xl:sticky xl:top-6 lg:col-span-2 xl:col-span-1">
       <section aria-labelledby="fin-h" className="px-4 pt-4 pb-4 space-y-3 border-b border-[var(--cds-border-subtle-01)]">
         <h2 id="fin-h" className="t-heading-02">Application status</h2>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 items-end">
@@ -849,7 +849,7 @@ function Confirmation({ m, onRoute }: { m: RequestModel; onRoute: (r: Route) => 
   return (
     <div className="px-4 sm:px-8 pt-6 w-form mx-auto">
       <h1 className="t-heading-05">Loan Request Submitted</h1>
-      <div className="bg-[var(--cds-layer-01)] p-6 sm:p-8 mt-6">
+      <div className="mt-6 pb-2">
         <div className="flex gap-4 items-start">
           <CheckmarkOutline size={32} className="shrink-0 fill-[var(--cds-support-success)]" aria-hidden="true" />
           <div>
@@ -860,7 +860,7 @@ function Confirmation({ m, onRoute }: { m: RequestModel; onRoute: (r: Route) => 
             <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-2">Submitted {req.submittedAt}.</p>
           </div>
         </div>
-        <div className="mt-8 flex flex-wrap items-center justify-between gap-4 p-4 border border-[var(--cds-border-subtle-01)] bg-[var(--cds-background)]">
+        <div className="band mt-8 flex flex-wrap items-center justify-between gap-4 p-4">
           <div>
             <p className="t-heading-compact-01">Full Loan Summary Package</p>
             <p className="t-helper-01 text-[var(--cds-text-secondary)]">Complete application details and supporting documentation</p>

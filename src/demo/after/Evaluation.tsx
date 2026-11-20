@@ -46,8 +46,8 @@ export const EVAL_STATUS: Record<string, { tone: Tone; label: string }> = {
 export function EvalSection({ id, title, metric, children, defaultOpen = true }: { id: string; title: string; metric?: number; children: ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section id={id} tabIndex={-1} aria-labelledby={`${id}-h`} className="bg-[var(--cds-layer-01)] mb-4 focus:outline-none">
-      <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4">
+    <section id={id} tabIndex={-1} aria-labelledby={`${id}-h`} className="eval-section focus:outline-none">
+      <div className="eval-section__head flex items-center justify-between gap-4 px-6 py-4">
         <button type="button" className="eval-toggle flex items-center gap-2 text-left" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen(!open)}>
           <ChevronDown size={20} aria-hidden="true" className={cx('transition-transform', !open && '-rotate-90')} />
           <h2 id={`${id}-h`} className="t-heading-03">{title}</h2>
@@ -59,7 +59,7 @@ export function EvalSection({ id, title, metric, children, defaultOpen = true }:
           </div>
         )}
       </div>
-      {open && <div id={`${id}-body`} className="px-6 pb-6">{children}</div>}
+      {open && <div id={`${id}-body`} className="eval-section__body">{children}</div>}
     </section>
   );
 }
@@ -220,8 +220,8 @@ function ManualEvaluation({ m, rows, total }: { m: RequestModel; rows: RequestMo
           {rows.map((r) => {
             const requested = req.reviewRequested[r.account.id];
             return (
-              <div key={r.account.id} className="border border-[var(--cds-border-subtle-01)] bg-[var(--cds-background)] mb-4">
-                <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-3 border-b border-[var(--cds-border-subtle-01)]">
+              <div key={r.account.id} className="border border-[var(--sbl-rule)] mb-4">
+                <div className="band flex flex-wrap items-start justify-between gap-4 px-4 py-3">
                   <div className="t-heading-02 flex flex-wrap items-center gap-2">{r.account.name} <span className="t-code text-[var(--cds-text-secondary)]">{r.account.number}</span> <Tag tone={EVAL_STATUS[r.status].tone}>{EVAL_STATUS[r.status].label}</Tag></div>
                   <div className="text-right">
                     <p className="t-label-01 text-[var(--cds-text-secondary)]">Maximum Borrowing Power</p>

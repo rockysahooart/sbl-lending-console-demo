@@ -74,6 +74,15 @@ and interaction states.
 
 What changed is presentation and behaviour, not the workflow:
 
+- **Neutral surface hierarchy.** Each Carbon neutral has one job: White for
+  the page, rows and form content; Gray 10 for bands (toolbars, section
+  headings, pagination, supporting panels, expanded record detail); Gray 20
+  for table column headers and the current record row; Gray 30 for the edges
+  of bands; Gray 50 for strong rules (totals); Gray 70 and Gray 100 for
+  secondary and primary text. IBM Blue is reserved for selection, focus and
+  actions. An expanded record shares its row's Gray 10 and one continuous
+  blue indicator, so the two read as a unit.
+
 - **Application status panel** shows Requested Loan Amount against Total
   Maximum Borrowing Power and every open item, grouped by step, each linked
   to the field where it is completed.
@@ -88,6 +97,26 @@ What changed is presentation and behaviour, not the workflow:
 - **Underwriting conditions** appear as *Condition Requested* in Submitted
   Applications and Pending Review, with **Respond**; approval follows once
   they are provided.
+
+### Additional fictional records (After only)
+
+Beyond the three interactive scenarios, After lists additional **fictional
+reference records** (`src/demo/after/records.ts`) so search, filters, sorting,
+pagination and expandable rows can be tried at realistic volume:
+
+- **Pending Evaluations / Evaluations:** 10 more requests (13 in all) covering
+  a coverage shortfall, an expired co-borrower ID, missing beneficial-owner
+  verification, a concentration limit awaiting manual evaluation, a pending
+  credit officer approval, restricted stock, an uncertified trust, a pricing
+  exception, a thin margin, and one request ready to submit. **Open**
+  shows a read-only application record.
+- **Submitted Applications / Pending Review:** 10 more (13 in all): in
+  underwriting, condition requested, pending credit committee, approved and
+  declined.
+- **Active Credit:** 10 more lines (12 in all), including lines near the
+  maintenance threshold and outstanding documents.
+
+The Before experience does not read this file; its data is unchanged.
 
 ### Simulated safeguards (After only)
 
@@ -260,6 +289,8 @@ src/
       AfterApp.tsx         Carbon UI shell, menu, roles, session timeout
       Console.tsx          Securities Lending Console (three tabs) and queue toolbar
       Evaluation.tsx       Evaluation screen and Acknowledgment Required dialog
+      Record.tsx           Read-only record for the additional fictional applications
+      records.ts           Additional fictional applications and credit lines (After only)
       guidance.ts          Next action, exceptions and warnings per request
       Workspace.tsx        Loan Request steps 1–4, status panel, Loan Request Submitted
       PostUnderwriting.tsx Pending Review and Active Credit

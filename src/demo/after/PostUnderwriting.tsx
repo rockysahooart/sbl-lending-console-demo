@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { ActionableNotification, Button, InlineNotification, Modal, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow } from '@carbon/react';
+import { ActionableNotification, Button, Checkbox, InlineNotification, Modal, Pagination, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow } from '@carbon/react';
 import { CheckmarkFilled, Time } from '@carbon/icons-react';
 import { ACTIVE_LINES, PIPELINE, fmtMoney, fmtPct, type ActiveLine, type ScenarioId } from '../data';
 import { nowStamp, useAfterRequest, useAudit } from './state';
 import { KV, Money, PageHeader, Tag, cx } from './ui';
 import { QueueToolbar, STATUS_TONE, type SearchBy } from './Console';
+import { LINE_REFS, SUBMITTED_REFS, type SubmittedRef } from './records';
 import type { Route } from './AfterApp';
 
 function useScenarioLines() {
@@ -20,15 +21,16 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
   const { log } = useAudit();
   const [confirmFor, setConfirmFor] = useState<string | null>(null);
   const rows = [
-    ...lines.filter((l) => l.m.req.status !== 'draft').map((l) => ({ key: l.m.s.requestId, client: l.m.s.entityName ?? l.m.s.primary.name, applicant: l.m.s.primary.name, requested: l.m.req.requested, power: l.m.ev.total, submitted: l.m.req.submittedAt ?? '', status: l.m.req.status, scenario: l, line: false })),
-    ...PIPELINE.filter((p) => p.status === 'In Underwriting').map((p) => ({ key: p.requestId, client: p.client, applicant: p.client, requested: p.requestedAmount, power: p.borrowingPower, submitted: '11/12/2025', status: 'submitted' as 'submitted' | 'approved', scenario: undefined, line: false })),
-    ...ACTIVE_LINES.map((l) => ({ key: l.id, client: l.client, applicant: l.client, requested: l.limit, power: l.collateralValue, submitted: l.approvedOn, status: 'approved' as 'submitted' | 'approved', scenario: undefined, line: true })),
+    ...lines.filter((l) => l.m.req.status !== 'draft').map((l) => ({ key: l.m.s.requestId, client: l.m.s.entityName ?? l.m.s.primary.name, applicant: l.m.s.primary.name, requested: l.m.req.requested, power: l.m.ev.total, submitted: l.m.req.submittedAt ?? '', status: l.m.req.status, scenario: l, line: false, ref: undefined as SubmittedRef | undefined })),
+    ...PIPELINE.filter((p) => p.status === 'In Underwriting').map((p) => ({ key: p.requestId, client: p.client, applicant: p.client, requested: p.requestedAmount, power: p.borrowingPower, submitted: '11/12/2025', status: 'submitted' as 'submitted' | 'approved', scenario: undefined, line: false, ref: undefined as SubmittedRef | undefined })),
+    ...SUBMITTED_REFS.map((r) => ({ key: r.id, client: r.business, applicant: r.applicant, requested: r.requested, power: r.power, submitted: r.submitted, status: (r.decision === 'Approved' ? 'approved' : 'submitted') as 'submitted' | 'approved', scenario: undefined, line: false, ref: r as SubmittedRef | undefined })),
+    ...ACTIVE_LINES.map((l) => ({ key: l.id, client: l.client, applicant: l.client, requested: l.limit, power: l.collateralValue, submitted: l.approvedOn, status: 'approved' as 'submitted' | 'approved', scenario: undefined, line: true, ref: undefined as SubmittedRef | undefined })),
   ];
   const [by, setBy] = useState<SearchBy>('id');
   const [q, setQ] = useState('');
   const [newest, setNewest] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
-  const underwriterStatus = (r: (typeof rows)[number]) => (r.status === 'approved' ? 'Approved' : (r.scenario?.m.req.conditions ?? []).some((c) => c.status === 'open') ? 'Condition Requested' : 'Underwriting In Progress');
+  const underwriterStatus = (r: (typeof rows)[number]): string => (r.ref ? r.ref.status : r.status === 'approved' ? 'Approved' : (r.scenario?.m.req.conditions ?? []).some((c) => c.status === 'open') ? 'Condition Requested' : 'Underwriting In Progress');
   const [statuses, setStatuses] = useState<string[]>([]);
   const shown = useMemo(() => {
     const n = q.trim().toLowerCase();
@@ -40,6 +42,11 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
   }, [rows, q, by, newest, statuses]); // eslint-disable-line react-hooks/exhaustive-deps
   const [sel, setSel] = useState<string | undefined>(focusId && rows.some((r) => r.key === focusId) ? focusId : undefined);
   const cur = rows.find((r) => r.key === sel);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const pages = Math.max(1, Math.ceil(shown.length / pageSize));
+  const curPage = Math.min(page, pages);
+  const visible = shown.slice((curPage - 1) * pageSize, curPage * pageSize);
   const target = rows.find((r) => r.key === confirmFor);
   const [conditionFor, setConditionFor] = useState<string | null>(null);
   const openOf = (r?: (typeof rows)[number]) => (r?.scenario?.m.req.conditions ?? []).filter((c) => c.status === 'open');
@@ -53,18 +60,22 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
     <div className="px-4 sm:px-8 py-8 w-page mx-auto">
       <PageHeader title="Post-Underwriting Review Queue" description="Applications reviewed by underwriting awaiting final banker decisioning. Credit Underwriting owns the credit decision; conditions that need your response appear here." />
       <div className="grid grid-cols-1 gap-6 items-start">
-        <section className="bg-[var(--cds-layer-01)] min-w-0" aria-label="Post-underwriting review queue">
-          <QueueToolbar by={by} onBy={(v) => { setBy(v); setQ(''); }} q={q} onQ={setQ} newest={newest} onSort={() => setNewest(!newest)} filterOpen={filterOpen} onFilter={() => setFilterOpen(!filterOpen)} filterCount={statuses.length} nameLabel="Borrower Name" />
-          {filterOpen && (
-            <fieldset className="px-4 pb-4 flex flex-wrap gap-x-6 gap-y-1">
-              <legend className="t-label-01 text-[var(--cds-text-secondary)] mb-2">Underwriter Status</legend>
-              {[...new Set(rows.map(underwriterStatus))].map((st) => (
-                <label key={st} className="inline-flex items-center gap-2 t-body-01"><input type="checkbox" checked={statuses.includes(st)} onChange={(e) => setStatuses(e.target.checked ? [...statuses, st] : statuses.filter((x) => x !== st))} />{st}</label>
-              ))}
-            </fieldset>
-          )}
+        <section className="sbl-queue min-w-0" aria-label="Post-underwriting review queue">
+          <QueueToolbar by={by} onBy={(v) => { setBy(v); setQ(''); setPage(1); }} q={q} onQ={(v) => { setQ(v); setPage(1); }} newest={newest} onSort={() => setNewest(!newest)} filterOpen={filterOpen} onFilter={() => setFilterOpen(!filterOpen)} filterCount={statuses.length} nameLabel="Borrower Name">
+            {filterOpen && (
+              <div className="queue-filters">
+                <fieldset>
+                  <legend className="t-label-01 text-[var(--cds-text-secondary)] mb-2">Underwriter Status</legend>
+                  {[...new Set(rows.map(underwriterStatus))].map((st) => (
+                    <Checkbox key={st} id={`uw-${st}`} labelText={st} checked={statuses.includes(st)} onChange={(_: unknown, { checked }: { checked: boolean }) => { setStatuses(checked ? [...statuses, st] : statuses.filter((x) => x !== st)); setPage(1); }} />
+                  ))}
+                </fieldset>
+                {statuses.length > 0 && <Button kind="ghost" size="sm" className="self-end" onClick={() => { setStatuses([]); setPage(1); }}>Clear filters</Button>}
+              </div>
+            )}
+          </QueueToolbar>
           <div className="overflow-x-auto">
-            <Table aria-label="Post-underwriting review queue" size="lg" className="min-w-[860px]">
+            <Table aria-label="Post-underwriting review queue" size="lg" className="queue-table min-w-[1120px]">
               <TableHead>
                 <TableRow>
                   <TableHeader>Application ID</TableHeader>
@@ -78,18 +89,20 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
                 </TableRow>
               </TableHead>
               <TableBody>
-                {shown.length === 0 && <TableRow><TableCell colSpan={8}><p className="t-body-01 py-2">{rows.length ? `No applications match “${q}”.` : 'No applications are in underwriting.'}</p></TableCell></TableRow>}
-                {shown.map((r) => {
+                {visible.length === 0 && (
+                  <TableRow className="empty-row"><TableCell colSpan={8}><div className="py-8 text-center"><p className="t-heading-02">{rows.length ? 'No applications match' : 'No applications are in underwriting.'}</p>{rows.length > 0 && <><p className="t-body-01 text-[var(--cds-text-secondary)] mt-1">Check the spelling or clear the search and filters.</p><Button kind="tertiary" size="sm" className="mt-4" onClick={() => { setQ(''); setStatuses([]); setPage(1); }}>Clear search and filters</Button></>}</div></TableCell></TableRow>
+                )}
+                {visible.map((r) => {
                   const st = underwriterStatus(r);
                   return (
                     <TableRow key={r.key} isSelected={sel === r.key}>
-                      <TableCell className="font-semibold">{r.key}</TableCell>
+                      <TableCell className="font-semibold tabular-nums whitespace-nowrap">{r.key}</TableCell>
                       <TableCell>{r.client}</TableCell>
-                      <TableCell>Securities-Based Line of Credit</TableCell>
+                      <TableCell className="cell-secondary whitespace-nowrap">Securities-Based Line of Credit</TableCell>
                       <TableCell className="num"><Money value={r.requested} /></TableCell>
                       <TableCell><Tag tone={STATUS_TONE[st] ?? 'info'}>{st}</Tag></TableCell>
-                      <TableCell>{r.line ? 'Booked' : r.status === 'approved' ? 'Approved' : <span className="text-[var(--cds-text-secondary)]">Pending</span>}</TableCell>
-                      <TableCell className="tabular-nums">{r.submitted.split(',')[0]}</TableCell>
+                      <TableCell>{r.line ? 'Booked' : r.ref ? (r.ref.decision === 'Pending' ? <span className="cell-secondary">Pending</span> : r.ref.decision) : r.status === 'approved' ? 'Approved' : <span className="cell-secondary">Pending</span>}</TableCell>
+                      <TableCell className="cell-secondary tabular-nums whitespace-nowrap">{r.submitted.split(',')[0]}</TableCell>
                       <TableCell>
                         <Button kind={st === 'Condition Requested' ? 'primary' : 'ghost'} size="sm" onClick={() => { setSel(r.key); setTimeout(() => document.getElementById('review-detail')?.focus(), 50); }} aria-pressed={sel === r.key} aria-label={`Evaluate ${r.key}`}>Evaluate</Button>
                       </TableCell>
@@ -99,15 +112,28 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
               </TableBody>
             </Table>
           </div>
+          <div className="queue-footer">
+            <Pagination page={curPage} pageSize={pageSize} pageSizes={[10, 20, 50]} totalItems={shown.length} size="md" itemsPerPageText="Applications per page" itemRangeText={(min: number, max: number, total: number) => `Showing ${min} to ${max} of ${total} applications`} pageRangeText={(_: number, total: number) => `of ${total} page${total === 1 ? '' : 's'}`} onChange={({ page: p, pageSize: z }: { page: number; pageSize: number }) => { setPage(p); setPageSize(z); }} />
+          </div>
         </section>
         {cur && (
-          <section id="review-detail" tabIndex={-1} aria-label={`Underwriting detail for ${cur.client}`} className="bg-[var(--cds-layer-01)] p-6 focus:outline-none">
+          <section id="review-detail" tabIndex={-1} aria-label={`Underwriting detail for ${cur.client}`} className="status-panel p-6 focus:outline-none">
             <h2 className="t-heading-03">{cur.client}</h2>
             <p className="t-helper-01 text-[var(--cds-text-secondary)]">{cur.key}</p>
-            <div className="mt-6 bg-[var(--cds-background)] px-4 py-3 accent-start">
-              <p className="t-label-01 text-[var(--cds-text-secondary)]">{cur.status === 'approved' ? 'Decision' : openOf(cur).length ? 'Needs your response' : 'Waiting on'}</p>
-              <p className="t-heading-02 mt-0.5">{cur.status === 'approved' ? 'Approved by Credit Underwriting' : openOf(cur).length ? `${openOf(cur).length} open condition${openOf(cur).length > 1 ? 's' : ''} from Credit Underwriting` : 'Credit Underwriting · decision due in 2 business days'}</p>
-              <p className="t-body-01 mt-1">{cur.status === 'approved' ? 'Next: monitor documents and collateral in Active credit.' : openOf(cur).length ? 'The decision follows once each condition is provided.' : 'No action is needed from you. Conditions, if any, will appear here.'}</p>
+            <div className="mt-6 callout px-4 py-3">
+              {cur.ref ? (
+                <>
+                  <p className="t-label-01 text-[var(--cds-text-secondary)]">{cur.ref.decision !== 'Pending' ? 'Decision' : cur.ref.conditions.length ? 'Needs your response' : 'Waiting on'}</p>
+                  <p className="t-heading-02 mt-0.5">{cur.ref.decision === 'Approved' ? `Approved by Credit Underwriting · ${fmtMoney(cur.ref.approvedLimit ?? 0)} limit` : cur.ref.decision === 'Declined' ? 'Declined by Credit Underwriting' : cur.ref.conditions.length ? `${cur.ref.conditions.length} open condition from Credit Underwriting` : cur.ref.status === 'Pending Credit Committee' ? 'Credit Committee' : 'Credit Underwriting · decision due in 2 business days'}</p>
+                  <p className="t-body-01 mt-1">{cur.ref.note}</p>
+                </>
+              ) : (
+                <>
+                  <p className="t-label-01 text-[var(--cds-text-secondary)]">{cur.status === 'approved' ? 'Decision' : openOf(cur).length ? 'Needs your response' : 'Waiting on'}</p>
+                  <p className="t-heading-02 mt-0.5">{cur.status === 'approved' ? 'Approved by Credit Underwriting' : openOf(cur).length ? `${openOf(cur).length} open condition${openOf(cur).length > 1 ? 's' : ''} from Credit Underwriting` : 'Credit Underwriting · decision due in 2 business days'}</p>
+                  <p className="t-body-01 mt-1">{cur.status === 'approved' ? 'Next: monitor documents and collateral in Active credit.' : openOf(cur).length ? 'The decision follows once each condition is provided.' : 'No action is needed from you. Conditions, if any, will appear here.'}</p>
+                </>
+              )}
             </div>
             {(cur.scenario?.m.req.conditions ?? []).length > 0 && (
               <section aria-labelledby="cond-h" className="mt-6">
@@ -126,6 +152,16 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
                 </ul>
               </section>
             )}
+            {cur.ref && cur.ref.conditions.length > 0 && (
+              <section aria-labelledby="refcond-h" className="mt-6">
+                <h3 id="refcond-h" className="t-heading-02">Conditions</h3>
+                <ul className="mt-2 border-t border-[var(--cds-border-subtle-01)]">
+                  {cur.ref.conditions.map((c) => (
+                    <li key={c} className="py-3 border-b border-[var(--cds-border-subtle-01)] flex items-start justify-between gap-3"><p className="t-body-01">{c}</p><Tag tone="warning">Open</Tag></li>
+                  ))}
+                </ul>
+              </section>
+            )}
             <dl className="grid grid-cols-2 gap-4 mt-6">
               <KV label="Underwriter" value="Credit Underwriting" />
               <KV label="Submitted" value={cur.submitted ? cur.submitted.split(',')[0] : '—'} mono />
@@ -138,7 +174,7 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
                 ['Credit application', true],
                 ['Collateral evaluation and reviews', true],
                 ['Identification, screening and ownership records', true],
-                ['Pledge and control agreement', cur.status === 'approved'],
+                ['Pledge and control agreement', cur.status === 'approved' && cur.ref?.decision !== 'Declined'],
               ].map(([d, ok]) => (
                 <li key={d as string} className="flex items-center gap-2">
                   {ok ? <CheckmarkFilled size={16} className="fill-[var(--cds-support-success)]" aria-hidden="true" /> : <Time size={16} aria-hidden="true" />}
@@ -236,7 +272,11 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
         collateral: l.m.ev.rows.filter((r) => r.pledged).map((r) => ({ account: `${r.account.name} ${r.account.number}`, value: r.value, change30d: 0 })),
       };
     });
-  const all: LineVM[] = [...approved, ...ACTIVE_LINES];
+  const all: LineVM[] = [...approved, ...ACTIVE_LINES, ...LINE_REFS];
+  const [lp, setLp] = useState(1);
+  const [lps, setLps] = useState(10);
+  const linePages = Math.max(1, Math.ceil(all.length / lps));
+  const lineVisible = all.slice((Math.min(lp, linePages) - 1) * lps, Math.min(lp, linePages) * lps);
   const [sel, setSel] = useState(focusId && all.some((l) => l.id === focusId) ? focusId : all[0].id);
   const cur = all.find((l) => l.id === sel) ?? all[0];
   const ltv = (l: LineVM) => (l.collateralValue ? l.outstanding / l.collateralValue : 0);
@@ -264,7 +304,7 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
               <li key={a.key} className="grid grid-cols-1 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)_auto] gap-x-8 gap-y-2 items-center py-4 border-b border-[var(--cds-border-subtle-00)]">
                 <div><p className="t-heading-compact-01">{a.line.client}</p><p className="t-helper-01 text-[var(--cds-text-secondary)]">{a.line.id}</p></div>
                 <div className="flex items-start gap-3">
-                  <Tag tone={a.tone}>{a.tag}</Tag>
+                  <span className="shrink-0"><Tag tone={a.tone}>{a.tag}</Tag></span>
                   <p className="t-body-01">{a.text}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 md:justify-end">
@@ -284,7 +324,7 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
       </section>
       <TableContainer title="All credit lines" description="Loan-to-value (LTV) = outstanding balance ÷ collateral market value. A maintenance call may be issued at the maintenance threshold.">
         <div className="overflow-x-auto">
-          <Table aria-label="Credit lines" size="lg" className="min-w-[1040px]">
+          <Table aria-label="Credit lines" size="lg" className="queue-table min-w-[1040px]">
             <TableHead>
               <TableRow>
                 <TableHeader>Client and line</TableHeader>
@@ -298,7 +338,7 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
               </TableRow>
             </TableHead>
             <TableBody>
-              {all.map((l) => {
+              {lineVisible.map((l) => {
                 const acked = global.acknowledgedAlerts.includes(l.id);
                 const docsOpen = l.docs.filter((d) => d.status !== 'Complete').length;
                 return (
@@ -323,6 +363,9 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
             </TableBody>
           </Table>
         </div>
+        <div className="queue-footer">
+          <Pagination page={Math.min(lp, linePages)} pageSize={lps} pageSizes={[10, 20, 50]} totalItems={all.length} size="md" itemsPerPageText="Lines per page" itemRangeText={(min: number, max: number, total: number) => `Showing ${min} to ${max} of ${total} credit lines`} pageRangeText={(_: number, total: number) => `of ${total} page${total === 1 ? '' : 's'}`} onChange={({ page: p, pageSize: z }: { page: number; pageSize: number }) => { setLp(p); setLps(z); }} />
+        </div>
       </TableContainer>
 
       <section id="credit-detail" tabIndex={-1} aria-label={`Detail for ${cur.client}`} className="mt-10 border-t-2 border-[var(--cds-interactive)] focus:outline-none scroll-mt-4">
@@ -335,7 +378,7 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="py-6 lg:pr-0">
-            <div className="bg-[var(--cds-layer-01)] p-5">
+            <div className="status-panel p-5">
             <h3 className="t-heading-02 mb-3">Credit</h3>
             <dl className="space-y-2 t-body-01 tabular-nums">
               <div className="flex justify-between"><dt className="text-[var(--cds-text-secondary)]">Approved credit limit</dt><dd><Money value={cur.limit} /></dd></div>

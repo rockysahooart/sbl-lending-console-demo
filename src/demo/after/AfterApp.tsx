@@ -13,6 +13,7 @@ import type { ScenarioId } from '../data';
 import { SelectField } from './ui';
 import { Console } from './Console';
 import { Evaluation } from './Evaluation';
+import { Record } from './Record';
 import { Workspace } from './Workspace';
 import { Underwriting, ActiveCredit } from './PostUnderwriting';
 import { AfterGlobalProvider, STEPS, USERS, nowStamp, useAudit, type Role, type Section } from './state';
@@ -25,6 +26,7 @@ export type ConsoleTab = 'pending' | 'evaluations' | 'submitted';
 export type Route =
   | { page: 'console'; tab?: ConsoleTab }
   | { page: 'evaluation'; id: ScenarioId }
+  | { page: 'record'; id: string }
   | { page: 'request'; id: ScenarioId; section: Section }
   | { page: 'confirmation'; id: ScenarioId }
   | { page: 'review'; id?: string }
@@ -33,14 +35,14 @@ export type Route =
 const SECTION_STAGE: Record<Section, Stage> = { customer: 'customer', parties: 'parties', loan: 'loan', collateral: 'collateral' };
 
 export function stageOf(r: Route): Stage {
-  if (r.page === 'console') return 'dashboard';
+  if (r.page === 'console' || r.page === 'record') return 'dashboard';
   if (r.page === 'evaluation') return 'evaluation';
   if (r.page === 'request') return SECTION_STAGE[r.section];
   if (r.page === 'confirmation') return 'submitted';
   return 'servicing';
 }
 
-const PAGES = ['console', 'evaluation', 'request', 'confirmation', 'review', 'credit'];
+const PAGES = ['console', 'evaluation', 'record', 'request', 'confirmation', 'review', 'credit'];
 const isRoute = (r: unknown): r is Route => {
   const x = r as Route | undefined;
   if (!x || !PAGES.includes(x.page)) return false;
@@ -186,6 +188,7 @@ function AfterInner() {
       </Header>
       <main id="after-main" tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
         {route.page === 'console' && <Console tab={route.tab ?? 'pending'} onRoute={setRoute} />}
+        {route.page === 'record' && <Record key={route.id} id={route.id} onRoute={setRoute} />}
         {route.page === 'evaluation' && <Evaluation key={route.id} id={route.id} onRoute={setRoute} />}
         {(route.page === 'request' || route.page === 'confirmation') && <Workspace key={route.id} route={route} onRoute={setRoute} />}
         {route.page === 'review' && <Underwriting focusId={route.id} onRoute={setRoute} />}
