@@ -1,5 +1,5 @@
 import { Button, InlineNotification, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@carbon/react';
-import { CheckmarkFilled, WarningAltFilled } from '@carbon/icons-react';
+import { CheckmarkFilled, Warning } from '@carbon/icons-react';
 import { fmtMoney, fmtPct } from '../data';
 import { PENDING_REFS, refMarket, refPower } from './records';
 import { STATUS_TONE } from './Console';
@@ -46,14 +46,14 @@ export function Record({ id, onRoute }: { id: string; onRoute: (r: Route) => voi
               const open = byStep(st).length;
               return (
                 <li key={st} className={cx(open > 0 && 'has-open')}>
-                  {open ? <WarningAltFilled size={16} className="fill-[var(--cds-support-warning)] [&_path:first-child]:fill-black" aria-hidden="true" /> : <CheckmarkFilled size={16} className="fill-[var(--cds-support-success)]" aria-hidden="true" />}
+                  {open ? <Warning size={16} className="fill-[var(--cds-icon-secondary)]" aria-hidden="true" /> : <CheckmarkFilled size={16} className="fill-[var(--cds-support-success)]" aria-hidden="true" />}
                   <span><span className="t-body-compact-01 block">{st}</span><span className="t-helper-01 text-[var(--cds-text-secondary)]">{open ? `${open} open item${open > 1 ? 's' : ''}` : 'Complete'}</span></span>
                 </li>
               );
             })}
           </ol>
         </nav>
-        <div className="min-w-0 w-record mx-auto">
+        <div className="min-w-0 w-full w-record mx-auto">
           <section aria-labelledby="rd-h" className="step-section">
             <h2 id="rd-h" className="t-heading-03 mb-6">Customer Details</h2>
             <dl className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-5">
@@ -69,7 +69,7 @@ export function Record({ id, onRoute }: { id: string; onRoute: (r: Route) => voi
           <section aria-labelledby="rc-h" className="step-section">
             <h2 id="rc-h" className="t-heading-03 mb-6">Collaterals</h2>
             <div className="overflow-x-auto">
-              <Table size="lg" aria-label="Collaterals" className="min-w-[680px]">
+              <Table size="md" aria-label="Collaterals" className="collateral-table min-w-[680px]">
                 <TableHead><TableRow><TableHeader>Collateral Name</TableHeader><TableHeader>Collateral Account Number</TableHeader><TableHeader className="num">Estimated Collateral Value</TableHeader><TableHeader className="num">Advance rate</TableHeader><TableHeader className="num">Maximum Borrowing Power</TableHeader><TableHeader>Status</TableHeader></TableRow></TableHead>
                 <TableBody>
                   {r.collateral.map((x) => {
@@ -112,11 +112,10 @@ export function Record({ id, onRoute }: { id: string; onRoute: (r: Route) => voi
             </ul>
           </section>
           <footer className="step-footer">
-            <Button kind="ghost" size="md" onClick={() => onRoute({ page: 'console' })}>Back</Button>
-            <Button size="md" onClick={() => onRoute({ page: 'console' })}>Return to Console</Button>
+            <Button kind="ghost" size="md" onClick={() => onRoute({ page: 'console', tab: 'pending', expanded: r.id })}>Back</Button>
           </footer>
         </div>
-        <aside aria-label="Application status" className="status-panel xl:sticky xl:top-6 lg:col-span-2 xl:col-span-1">
+        <aside aria-label="Application status" className="status-panel xl:sticky xl:top-6 lg:col-start-2 xl:col-start-auto">
           <section className="px-4 py-4 space-y-3 border-b border-[var(--cds-border-subtle-01)]">
             <h2 className="t-heading-02">Application status</h2>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 items-end">

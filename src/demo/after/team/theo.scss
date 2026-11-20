@@ -1,0 +1,19 @@
+// Owner: Theo — implementation round (see docs/design-team-change-log.md).
+// Only Theo edits this file. Loaded after carbon.scss, so rules here refine it.
+@use '@carbon/react/scss/breakpoint' as bp;
+@use '@carbon/react/scss/type';
+
+.sbl-after {
+  // THEO-01 — The user menu anchors under the header (carbon.scss sets top:100%), but Carbon
+  // also sets inset-block-end:0. Inside the 48px relative header the two resolved to a
+  // 0px-tall panel, hiding the role switch and Sign out. Let the content size the panel.
+  .cds--header-panel { inset-block-end: auto; }
+
+  // THEO-05 — A container the app jumped to (landOn() in Evaluation.tsx marks it data-landed)
+  // shows where the user arrived. It is focused, so the outline clears on the next click or Tab.
+  // Clicking inside a section does not mark it, so ordinary clicks never draw this.
+  [data-landed][tabindex='-1']:focus {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: 4px;
+  }
+}

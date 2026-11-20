@@ -43,7 +43,7 @@ Each item is labelled:
 | Topic | Classification | Source | Demo implementation |
 |---|---|---|---|
 | Politically exposed persons | Regulation (for private banking accounts of senior foreign political figures) / Supervisory expectation | 31 CFR 1010.620; FFIEC BSA/AML Manual | PEP question, no preselected answer |
-| Third-party repayment, inconsistent source of funds, weapons-related activity | Internal policy (assumed) | Risk-based customer due diligence | Questions asked only if not on file; no default answers (the baseline defaulted to “Yes”) |
+| Third-party repayment, inconsistent source of funds, weapons-related activity | Internal policy (assumed) | Risk-based customer due diligence | Asked in Customer Information (and for each co-borrower) with no default answers (the baseline defaulted to “Yes”) |
 
 ## 5. Equal Credit Opportunity Act (Regulation B)
 
@@ -59,7 +59,7 @@ Each item is labelled:
 | Topic | Classification | Source | Demo implementation |
 |---|---|---|---|
 | Credit secured by margin stock; purpose credit limits | Regulation | Regulation U, 12 CFR 221 | “Use of proceeds”: purpose vs non-purpose |
-| Purpose statement (Form FR U-1) for credit secured by margin stock above the regulatory threshold | Regulation | 12 CFR 221.3(c) | Checkbox confirming a completed FR U-1; **threshold applicability must be confirmed by Compliance** |
+| Purpose statement (Form FR U-1) for credit secured by margin stock above the regulatory threshold | Regulation | 12 CFR 221.3(c) | Checkbox confirming a completed FR U-1. The rule applies to bank credit secured by margin stock of more than $100,000 (12 CFR 221.3(c)); **how it applies to this product must be confirmed by Compliance** |
 | Offering non-purpose credit only | Internal policy (assumed) | Product policy | Purpose credit shows “Not available for this product” |
 
 ## 7. Privacy and information security (GLBA)
@@ -67,7 +67,7 @@ Each item is labelled:
 | Topic | Classification | Source | Demo implementation |
 |---|---|---|---|
 | Privacy notices to consumers/customers | Regulation | GLBA Title V; Regulation P, 12 CFR 1016 | Not represented (notice delivery is outside origination UI) |
-| Information security program, access controls, monitoring for banks | Regulation | Interagency Guidelines Establishing Information Security Standards (e.g., 12 CFR 30 App. B, 12 CFR 208 App. D-2, 12 CFR 364 App. B). The FTC Safeguards Rule applies to non-bank financial institutions | Role-based access (Relationship Banker / Credit Officer), least-privilege identifier visibility, audit events |
+| Information security program, access controls, monitoring for banks | Regulation | Interagency Guidelines Establishing Information Security Standards (e.g., 12 CFR 30 App. B, 12 CFR 208 App. D-2, 12 CFR 364 App. B). The FTC Safeguards Rule applies to non-bank financial institutions | Role-based access (Loan Officer / Credit Officer), least-privilege identifier visibility, audit events |
 | Masking SSNs; reason-required reveal; automatic re-masking | Internal policy (assumed) / UX practice | Supports the access-control objective; some state laws restrict SSN display | SSN masked by default; reveal requires a reason, is logged, re-masks after 30 seconds; Credit Officer cannot reveal |
 | Session timeout | Internal policy (assumed) | Risk-based authentication and session management (FFIEC guidance) | Warning at 13 minutes idle, sign-out at 15 (shortened with `?sessionSeconds=N` for testing) |
 
@@ -75,7 +75,7 @@ Each item is labelled:
 
 | Topic | Classification | Source | Demo implementation |
 |---|---|---|---|
-| Permissible purpose to obtain a consumer report | Regulation | FCRA, 15 U.S.C. 1681b | “How did the client authorize this application?” records the authorization method; wording requires Legal review |
+| Permissible purpose to obtain a consumer report | Regulation | FCRA, 15 U.S.C. 1681b | “How did the customer authorize this application?” records the authorization method; wording requires Legal review |
 | Consumer consent to electronic records | Regulation (consumer transactions) | E-SIGN Act, 15 U.S.C. 7001(c) | Attestation that the client consented to electronic records and signatures |
 | Open-end consumer credit disclosures | Regulation (if consumer-purpose) | TILA / Regulation Z | Not represented; applicability depends on product structure — flag for Compliance |
 
@@ -83,10 +83,10 @@ Each item is labelled:
 
 | Topic | Classification | Demo implementation |
 |---|---|---|
-| Manual collateral valuation exceptions approved by a separate credit function | Internal policy (assumed) / Supervisory expectation for sound credit risk management | Banker requests review; only the Credit Officer role records a rate (within a 35–60% range) with a rationale; banker submits |
-| Audit trail of consequential events | Internal policy (assumed) / supports GLBA monitoring objectives | Events recorded with time, user, role, event and details (sensitive data viewed, co-borrower changes, ID updates, pledge changes, reviews, authorization, submission, simulated decisions, alert acknowledgment) |
+| Manual collateral valuation exceptions approved by a separate credit function | Internal policy (assumed) / Supervisory expectation for sound credit risk management | Loan Officer requests review; only the Credit Officer role records a rate (within a 35–60% range) with a rationale; the Loan Officer submits |
+| Audit trail of consequential events | Internal policy (assumed) / supports GLBA monitoring objectives | Events recorded with time, user, role (display name), event and details (sensitive data viewed, co-borrower changes, ID updates, pledge changes, reviews, authorization, submission, simulated decisions, alert acknowledgment) |
 | Transparent calculations | UX practice | Calculation details (rates and formula) and estimate history with before/after values |
-| Estimates distinguished from decisions | UX practice; avoids misleading representations | “Estimated borrowing power … Not a credit decision or an offer of credit”; approved credit limit appears only after an underwriting decision |
+| Estimates distinguished from decisions | UX practice; avoids misleading representations | “Indicative estimate. Not a credit decision or an offer of credit.” next to Total Maximum Borrowing Power; approved credit limit appears only after an underwriting decision |
 | Confirmation of consequential actions | UX practice | Submit, remove co-borrower, record review, simulated decisions and signatures use confirmation dialogs |
 
 ## 10. What the demo does not do

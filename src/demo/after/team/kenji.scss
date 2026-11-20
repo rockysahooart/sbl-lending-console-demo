@@ -1,0 +1,169 @@
+// Owner: Kenji — implementation round (see docs/design-team-change-log.md).
+// Only Kenji edits this file. Loaded after carbon.scss, so rules here refine it.
+// Responsive rules (wave 1): see scratchpad/review/log/kenji.md.
+//   - Desktop density (fine pointer, >= 1280 px) is unchanged.
+//   - Touch (`pointer: coarse`) raises the controls that drive work to >= 40-44 px.
+//   - Wide tables keep their own horizontal scroll; the row action stays in view.
+@use '@carbon/react/scss/breakpoint' as bp;
+@use '@carbon/react/scss/type';
+
+.sbl-after {
+  // ---------------------------------------------------------------------------
+  // KENJI-04 · Row action stays in view when a queue table scrolls sideways.
+  // Only tables whose last cell holds a button (Console, Pending Review) — not
+  // Active Credit, whose last column is a status. Below 1280 px only, so wide
+  // desktop layouts are unchanged; sticky is inert when the table fits.
+  // ---------------------------------------------------------------------------
+  @media (max-width: 1279.98px) {
+    .queue-table:has(tbody > tr:not(.expanded-detail) > td:last-child .cds--btn) {
+      > thead > tr > th:last-child,
+      > tbody > tr:not(.expanded-detail):not(.empty-row) > td:last-child {
+        position: sticky;
+        inset-inline-end: 0;
+        z-index: 1;
+        // Band edge (Gray 30 rule) marks where scrolled columns slide under.
+        box-shadow: inset 1px 0 0 var(--sbl-rule);
+      }
+      // Sticky cells need an opaque surface matching their row state.
+      > thead > tr > th:last-child { background: var(--cds-layer-accent-01, #e0e0e0); }
+      > tbody > tr:not(.expanded-detail):not(.empty-row) > td:last-child { background: var(--sbl-surface-row, #fff); }
+      > tbody > tr:not(.expanded-detail):hover > td:last-child { background: var(--sbl-surface-row-hover, var(--cds-layer-hover-01)); }
+      > tbody > tr.cds--data-table--selected > td:last-child,
+      > tbody > tr[data-selected='true'] > td:last-child { background: var(--cds-layer-selected-01); }
+      > tbody > tr.is-expanded > td:last-child { background: var(--sbl-surface-detail); }
+    }
+  }
+  // On phones the pinned column is kept narrow so the Application ID stays readable.
+  @media (max-width: 479.98px) {
+    .queue-table:has(tbody > tr:not(.expanded-detail) > td:last-child .cds--btn) {
+      > thead > tr > th:last-child,
+      > tbody > tr:not(.expanded-detail):not(.empty-row) > td:last-child { padding-inline: 0.25rem; inline-size: 1%; }
+      > thead > tr > th:last-child .cds--table-header-label { padding-inline-start: 0.5rem; }
+      > tbody > tr > td:last-child .cds--btn--sm { padding-inline: 0.5rem; }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // KENJI-05 · Expanded Console row: the detail is pinned to the visible part
+  // of the scrolling table, so nothing is clipped on phones and tablets.
+  // ---------------------------------------------------------------------------
+  .sbl-queue .cds--data-table-content,
+  .sbl-queue .overflow-x-auto { container-type: inline-size; }
+  // The cell keeps Carbon's 1rem inline padding; the body sticks 1rem from the
+  // scroller's left edge and is never wider than the visible table.
+  .queue-table .expanded-body {
+    position: sticky;
+    inset-inline-start: 1rem;
+    box-sizing: border-box;
+    max-inline-size: calc(100cqi - 2rem);
+  }
+  @media (max-width: 671.98px) {
+    .queue-table .expanded-body { padding-inline: 0.5rem 0; }
+    // Two narrow columns of facts on phones; long values wrap instead of clipping.
+    .queue-table .expanded-body dl { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .queue-table .expanded-body dd { overflow-wrap: anywhere; }
+  }
+
+  // ---------------------------------------------------------------------------
+  // KENJI-10 · Console toolbar on phones: Filter + Sort on one row.
+  // ---------------------------------------------------------------------------
+  @media (max-width: 671.98px) {
+    .queue-toolbar__actions { inline-size: 100%; }
+    .queue-toolbar__actions .cds--btn { flex: 1 1 auto; max-inline-size: none; }
+  }
+
+  // ---------------------------------------------------------------------------
+  // KENJI-11 / FELIX-06 · Pagination never wider than its band.
+  // ---------------------------------------------------------------------------
+  .queue-footer .cds--pagination { min-inline-size: 0; max-inline-size: 100%; }
+  .queue-footer .cds--pagination__left { min-inline-size: 0; flex: 1 1 auto; overflow: hidden; }
+  .queue-footer .cds--pagination__right { flex: none; }
+  @media (max-width: 1055.98px) {
+    .queue-footer .cds--pagination__text { white-space: normal; }
+    .queue-footer .cds--pagination__left { gap: 0.5rem; }
+  }
+  @media (max-width: 671.98px) {
+    // Range text only; "items per page" is hidden by Carbon below md already.
+    .queue-footer .cds--pagination__left { padding-inline-start: 1rem; }
+    .queue-footer .cds--pagination__right .cds--pagination__text,
+    .queue-footer .cds--pagination__right .cds--select { display: none; }
+  }
+  // Long action labels (Active Credit "Acknowledge and schedule outreach") wrap
+  // instead of pushing the page sideways on the narrowest phones.
+  @media (max-width: 479.98px) {
+    main .cds--btn { max-inline-size: 100%; }
+    main .cds--btn--sm { block-size: auto; min-block-size: 2rem; white-space: normal; text-align: start; }
+  }
+
+  // ---------------------------------------------------------------------------
+  // KENJI-07 · Touch targets (coarse pointer only — desktop density unchanged).
+  // ---------------------------------------------------------------------------
+  @media (pointer: coarse) {
+    // Row expand chevron: 16 px icon, 44 px hit area.
+    .cds--table-expand__button {
+      min-inline-size: 44px;
+      min-block-size: 44px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    td.cds--table-expand, th.cds--table-expand { inline-size: 3rem; }
+    // Row selection checkboxes (Collaterals) and filter checkboxes.
+    .cds--table-column-checkbox .cds--checkbox--inline,
+    .cds--table-column-checkbox .cds--checkbox-label { min-block-size: 44px; min-inline-size: 44px; align-items: center; }
+    .queue-filters .cds--checkbox-label,
+    .cds--radio-button__label { min-block-size: 44px; align-items: center; }
+    // Row and list actions (Carbon sm = 32 px).
+    .queue-table .cds--btn--sm,
+    main .cds--btn--sm { min-block-size: 44px; align-items: center; }
+    // Hamburger menu destinations.
+    .cds--side-nav__link { min-block-size: 44px; }
+    // Accordion / section toggles stay >= 44 px.
+    .cds--accordion__heading { min-block-size: 44px; }
+  }
+
+  // ===========================================================================
+  // Wave 2 — Workspace (Loan Request steps) and Record
+  // ===========================================================================
+
+  // KENJI-03 · Below lg the vertical step list folds into one line:
+  // "Step n of 4" (toggles the full list) · "Application status · N open" (jumps to the panel).
+  .step-compact {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 1rem;
+    padding-block: 0.25rem; border-block-end: 1px solid var(--sbl-rule);
+    @media (min-width: 1024px) { display: none; } // Tailwind lg, where the vertical list returns
+  }
+  .step-compact__toggle {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    min-block-size: 44px; padding-inline: 0; background: none; border: 0; color: var(--cds-text-primary); cursor: pointer;
+    &:focus-visible { outline: 2px solid var(--cds-focus); outline-offset: 2px; }
+  }
+  .step-compact__status {
+    display: inline-flex; align-items: center; gap: 0.25rem; min-block-size: 44px;
+    @include type.type-style('body-compact-01');
+  }
+  // The jump lands with the panel's heading in view.
+  #application-status { scroll-margin-block-start: 1rem; }
+
+  // KENJI-02 / FELIX-06 · Borrower and co-borrower cards at phone width: the ID list takes
+  // its own row under the name (basis-full in Workspace.tsx); identifiers never break mid-token.
+  .customer-card__ids dd.tabular-nums { overflow-wrap: normal; word-break: keep-all; white-space: nowrap; }
+  @media (max-width: 671.98px) {
+    .customer-card { padding: 1rem; gap: 1rem; }
+    // Email is the last fact and the only long token: give it the full row.
+    .customer-card__ids > div:last-child { grid-column: 1 / -1; }
+  }
+
+  // KENJI-09 · At xl the sticky status panel never exceeds the scroll area: the headline
+  // (amounts, coverage) stays fixed and only the readiness list scrolls inside the panel.
+  // 9rem = demo bar (40–48px) + header (48px) + sticky offset (24px) + bottom breathing room.
+  @media (min-width: 1280px) { // Tailwind xl, where the panel becomes the third column
+    // PAUL-F2: scoped to the request asides (Workspace, Record). The Pending Review detail and the
+    // Active Credit line detail reuse .status-panel for its band surface only; capping them clipped
+    // the Conditions section (and "Mark as provided") to an 80px inner scroller at 1440×900.
+    aside.status-panel {
+      display: flex; flex-direction: column;
+      max-block-size: calc(100dvh - 9rem);
+    }
+    aside.status-panel > section:first-child { flex: none; }
+    aside.status-panel > section:not(:first-child) { flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overscroll-behavior: contain; }
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Accordion,
   AccordionItem,
@@ -22,7 +22,7 @@ import { ChevronDown, DocumentPdf } from '@carbon/icons-react';
 import { useDemo } from '../DemoContext';
 import { ASSET_CLASS_LABEL, fmtMoney, fmtPct, type ScenarioId } from '../data';
 import { reviewBounds } from '../engine';
-import { ATTESTATIONS, nowStamp, useAfterRequest, type RequestModel } from './state';
+import { ATTESTATIONS, ROLE_LABEL, USERS, nowStamp, useAfterRequest, useAudit, type RequestModel } from './state';
 import { reviewUpside } from './guidance';
 import { KV, Money, Tag, TextField, cx, type Tone } from './ui';
 import type { Route } from './AfterApp';
@@ -42,20 +42,64 @@ export const EVAL_STATUS: Record<string, { tone: Tone; label: string }> = {
   excluded: { tone: 'neutral', label: 'Not selected' },
 };
 
+/**
+ * Land on an element after a jump (THEO-05 / THEO-02 counterpart / MARA-01).
+ * Scrolls only the After content area (#after-main), never the demo frame around it,
+ * then focuses the element and marks it `data-landed` so it shows where the user arrived
+ * (outline: team/theo.scss; one-time cue: team/mara.scss). The mark clears on blur.
+ * 'nearest' moves as little as possible, keeping what the user acted on in view when it fits.
+ */
+export function landOn(el: HTMLElement | null, mode: 'start' | 'nearest' = 'start') {
+  if (!el) return;
+  const main = document.getElementById('after-main');
+  if (main) {
+    const m = main.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const gap = 16;
+    let delta = r.top - m.top - gap;
+    if (mode === 'nearest') {
+      if (r.top >= m.top + gap && r.bottom <= m.bottom - gap) delta = 0;
+      else if (r.top > m.top && r.height <= m.height - 2 * gap) delta = r.bottom - m.bottom + gap;
+    }
+    if (delta) main.scrollTo({ top: main.scrollTop + delta });
+  }
+  markLanded(el);
+  el.focus({ preventScroll: true });
+}
+
+function markLanded(el: HTMLElement) {
+  if (el.hasAttribute('data-landed')) { el.removeAttribute('data-landed'); void el.offsetWidth; }
+  el.setAttribute('data-landed', '');
+  // The cue has done its job once the user moves on (Tab away) or works inside the target (click).
+  const clear = () => { el.removeAttribute('data-landed'); el.removeEventListener('blur', clear); el.removeEventListener('pointerdown', clear); };
+  el.addEventListener('blur', clear);
+  el.addEventListener('pointerdown', clear);
+}
+
 /** Collapsible section with the heading on the left and its Maximum Borrowing Power on the right, as in the original. */
-export function EvalSection({ id, title, metric, children, defaultOpen = true }: { id: string; title: string; metric?: number; children: ReactNode; defaultOpen?: boolean }) {
+export function EvalSection({ id, title, metric, note, children, defaultOpen = true }: { id: string; title: string; metric?: number; note?: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
+  const pointer = useRef(false);
   return (
-    <section id={id} tabIndex={-1} aria-labelledby={`${id}-h`} className="eval-section focus:outline-none">
+    <section
+      id={id}
+      tabIndex={-1}
+      aria-labelledby={`${id}-h`}
+      className="eval-section focus:outline-none"
+      onPointerDown={() => { pointer.current = true; }}
+      onPointerUp={() => { pointer.current = false; }}
+      onFocus={(e) => { if (e.target === e.currentTarget && !pointer.current) markLanded(e.currentTarget); }}
+    >
       <div className="eval-section__head flex items-center justify-between gap-4 px-6 py-4">
-        <button type="button" className="eval-toggle flex items-center gap-2 text-left" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen(!open)}>
-          <ChevronDown size={20} aria-hidden="true" className={cx('transition-transform', !open && '-rotate-90')} />
+        <button type="button" className="eval-toggle flex items-center gap-2 text-left" aria-expanded={open} aria-controls={open ? `${id}-body` : undefined} onClick={() => setOpen(!open)}>
+          <ChevronDown size={20} aria-hidden="true" className={cx(!open && '-rotate-90')} />
           <h2 id={`${id}-h`} className="t-heading-03">{title}</h2>
         </button>
         {metric != null && (
           <div className="text-right">
             <p className="t-label-01 text-[var(--cds-text-secondary)]">Maximum Borrowing Power</p>
             <p className="t-heading-03 tabular-nums !font-semibold"><Money value={metric} /></p>
+            {note}
           </div>
         )}
       </div>
@@ -87,6 +131,7 @@ export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck }: { id: S
     selectable.forEach((r) => { next[r.account.id] = !allSelected; });
     changeEstimate({ pledged: next }, allSelected ? 'Deselected all accounts' : 'Selected all accounts');
   };
+  const generatePdf = () => { setPdf(true); m.log('Evaluation PDF generated (simulated)', `Total Maximum Borrowing Power ${fmtMoney(ev.total)}`, s.requestId); };
   const start = () => {
     if (locked) { onRoute({ page: 'review', id: s.requestId }); return; }
     if (acknowledged) onRoute({ page: 'request', id, section: req.section });
@@ -121,7 +166,7 @@ export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck }: { id: S
               const st = EVAL_STATUS[r.status];
               const rate = r.status === 'ineligible' ? 0 : r.holdings[0].concentrated ? r.holdings[0].appliedRate : r.holdings[0].baseRate;
               return (
-                <li key={r.account.id} className={cx('eval-tile p-4 border', r.pledged ? 'is-selected' : '', r.status === 'ineligible' && 'opacity-90')}>
+                <li key={r.account.id} className={cx('eval-tile p-4 border', r.pledged ? 'is-selected' : '', r.status === 'ineligible' && 'is-ineligible')}>
                   <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
                     <Checkbox
                       id={`eval-${r.account.id}`}
@@ -146,16 +191,18 @@ export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck }: { id: S
 
         <ManualEvaluation m={m} rows={manualRows} total={manualTotal} />
 
-        <EvalSection id="total-evaluation" title="Total Evaluation" metric={ev.total}>
+        {/* PAUL-04: the consequence sits with the total, visible where the decision is made. */}
+        <EvalSection id="total-evaluation" title="Total Evaluation" metric={ev.total} note={ev.total < req.requested ? <p className="t-helper-01 tabular-nums text-[var(--cds-text-error)]">{fmtMoney(req.requested - ev.total)} short of {fmtMoney(req.requested)}</p> : null}>
           <dl className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {[
               ['Auto Evaluation', autoTotal],
               ['Manual Evaluation', manualTotal],
               ['Total Evaluations', ev.total],
-            ].map(([l, v]) => (
+            ].map(([l, v], i) => (
               <div key={l as string}>
                 <dt className="t-body-01">{l}<span className="block t-label-01 text-[var(--cds-text-secondary)]">Maximum Borrowing Power</span></dt>
-                <dd className="t-heading-05 tabular-nums mt-1 text-[var(--cds-link-primary)]"><Money value={v as number} /></dd>
+                {/* IRIS-02: figures are information, not actions — primary text; the total carries weight, not colour. */}
+                <dd className={cx('t-heading-05 tabular-nums mt-1', i === 2 && '!font-semibold')}><Money value={v as number} /></dd>
               </div>
             ))}
           </dl>
@@ -191,11 +238,13 @@ export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck }: { id: S
       </fieldset>
 
       <footer className="step-footer">
-        <Button kind="ghost" size="md" onClick={() => onRoute({ page: 'console' })}>Back</Button>
-        <div className="flex flex-wrap items-center justify-end gap-4">
-          {pdf && <p className="t-helper-01 text-[var(--cds-text-secondary)]" role="status">Evaluation PDF prepared (simulated)</p>}
-          <Button kind="tertiary" size="md" renderIcon={DocumentPdf} onClick={() => { setPdf(true); m.log('Evaluation PDF generated (simulated)', `Total Maximum Borrowing Power ${fmtMoney(ev.total)}`, s.requestId); }}>Generate PDF</Button>
-          <Button size="md" onClick={start}>{locked ? 'View in Pending Review' : started ? 'Continue Request' : 'Start Request'}</Button>
+        <Button kind="ghost" size="md" onClick={() => onRoute({ page: 'console', tab: 'pending', expanded: s.requestId })}>Back</Button>
+        {/* KENJI-08 (done by Ada): below sm, Generate PDF is icon-only and the row does not wrap, so the sticky footer stays one row. */}
+        <div className="flex flex-nowrap sm:flex-wrap items-center justify-end gap-2 sm:gap-4">
+          {pdf && <p className="t-helper-01 text-[var(--cds-text-secondary)] sr-only sm:not-sr-only" role="status">Evaluation PDF prepared (simulated)</p>}
+          <Button kind="tertiary" size="md" hasIconOnly renderIcon={DocumentPdf} iconDescription="Generate PDF" tooltipPosition="top" className="sm:!hidden" onClick={generatePdf} />
+          <Button kind="tertiary" size="md" renderIcon={DocumentPdf} className="max-sm:!hidden" onClick={generatePdf}>Generate PDF</Button>
+          <Button id="evaluation-primary" size="md" onClick={start}>{locked ? 'View in Pending Review' : started ? 'Continue Request' : 'Start Request'}</Button>
         </div>
       </footer>
       <AcknowledgmentModal
@@ -210,7 +259,19 @@ export function Evaluation({ id, onRoute, ack: ackOpen = false, onAck }: { id: S
 
 function ManualEvaluation({ m, rows, total }: { m: RequestModel; rows: RequestModel['ev']['rows']; total: number }) {
   const { s, req, update, role, log } = m;
+  const { setGlobal } = useAudit();
   const [reviewing, setReviewing] = useState<string | null>(null);
+  /** PAUL-02: demo shortcut for the role switch in the user menu (same state change and audit entry). */
+  const switchToCreditOfficer = (accountId: string) => {
+    setGlobal((g) => ({ ...g, role: 'Credit Officer', audit: [{ at: nowStamp(), user: USERS['Credit Officer'], role: 'Credit Officer', event: 'Role changed', detail: 'Signed in as Credit Officer' }, ...g.audit] }));
+    setTimeout(() => document.getElementById(`complete-review-${accountId}`)?.focus(), 60);
+  };
+  // PAUL-F1: mirror of PAUL-02. Once the review is recorded, hand the request back to the loan officer
+  // (same role state and audit entry as the user menu); focus lands on the footer's Start/Continue Request.
+  const switchToLoanOfficer = () => {
+    setGlobal((g) => ({ ...g, role: 'Relationship Banker', audit: [{ at: nowStamp(), user: USERS['Relationship Banker'], role: ROLE_LABEL['Relationship Banker'], event: 'Role changed', detail: `Signed in as ${ROLE_LABEL['Relationship Banker']}` }, ...g.audit] }));
+    setTimeout(() => document.getElementById('evaluation-primary')?.focus(), 60);
+  };
   return (
     <EvalSection id="manual-evaluation" title="Manual Evaluation" metric={total}>
       {rows.length === 0 ? (
@@ -243,15 +304,24 @@ function ManualEvaluation({ m, rows, total }: { m: RequestModel; rows: RequestMo
                   </TableBody>
                 </Table>
                 <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                  <p className="t-helper-01 text-[var(--cds-text-secondary)] max-w-3xl">{r.explanation}</p>
+                  {/* PAUL-04: while under review the tile above already states this rationale; keep it here only once reviewed. */}
+                  {r.status === 'review' ? <span aria-hidden="true" /> : <p className="t-helper-01 text-[var(--cds-text-secondary)] max-w-3xl">{r.explanation}</p>}
                   {r.status === 'review' && role === 'Relationship Banker' && (requested ? (
-                    <Tag tone="pending">Awaiting credit officer review</Tag>
+                    <span className="inline-flex flex-wrap items-center gap-3">
+                      <Tag tone="pending">Awaiting credit officer review</Tag>
+                      <Button kind="tertiary" size="sm" onClick={() => switchToCreditOfficer(r.account.id)}>Switch to Credit Officer</Button>
+                    </span>
                   ) : (
                     <Button kind="tertiary" size="sm" onClick={() => { update({ reviewRequested: { ...req.reviewRequested, [r.account.id]: nowStamp() } }); log('Collateral review requested', `${r.account.name} ${r.account.number}`, s.requestId); }}>Request credit officer review</Button>
                   ))}
-                  {role === 'Credit Officer' && (
-                    <Button kind={r.status === 'review' ? 'primary' : 'tertiary'} size="sm" onClick={() => setReviewing(r.account.id)}>{r.status === 'review' ? 'Complete review' : 'Revise review'}</Button>
-                  )}
+                  {role === 'Credit Officer' && (r.status === 'review' ? (
+                    <Button id={`complete-review-${r.account.id}`} kind="primary" size="sm" onClick={() => setReviewing(r.account.id)}>Complete review</Button>
+                  ) : (
+                    <span className="inline-flex flex-wrap items-center gap-3">
+                      <Button id={`complete-review-${r.account.id}`} kind="tertiary" size="sm" onClick={() => setReviewing(r.account.id)}>Revise review</Button>
+                      <Button kind="tertiary" size="sm" onClick={switchToLoanOfficer}>Switch to Loan Officer</Button>
+                    </span>
+                  ))}
                 </div>
               </div>
             );

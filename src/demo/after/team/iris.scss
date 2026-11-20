@@ -1,0 +1,54 @@
+// Owner: Iris — implementation round (see docs/design-team-change-log.md).
+// Only Iris edits this file. Loaded after carbon.scss, so rules here refine it.
+@use '@carbon/react/scss/breakpoint' as bp;
+@use '@carbon/react/scss/type';
+
+.sbl-after {
+  // IRIS-01 — A tag inside a record value may wrap rather than run out of its column
+  // (carbon.scss lets tags grow without limit so their wording is never truncated).
+  dl .cds--tag { max-inline-size: 100%; block-size: auto; min-block-size: 1.5rem; }
+  dl .cds--tag .cds--tag__label { white-space: normal; }
+
+  // IRIS-06 — Fields in a row share one baseline: labels get a two-line slot and sit
+  // on its bottom edge, so a wrapped label no longer pushes its control down.
+  .field-grid .cds--label {
+    @include bp.breakpoint(md) {
+      display: flex; align-items: flex-end; min-block-size: 2rem;
+    }
+  }
+
+  // IRIS-07 — Long unbroken values (email) break between characters only when they must.
+  dd { overflow-wrap: anywhere; }
+
+  // IRIS-08 — The borrower monogram is an identity token, not an action: white with a
+  // Gray 30 edge on the Gray 10 card, primary text. IBM Blue stays for selection/focus/actions.
+  .customer-card__avatar {
+    background: var(--cds-background);
+    color: var(--cds-text-primary);
+    box-shadow: inset 0 0 0 1px var(--cds-border-subtle-01);
+  }
+
+  // IRIS-04 — Collateral tables: md rows, and column headers that wrap at most once.
+  .collateral-table th .cds--table-header-label { text-wrap: balance; }
+}
+
+// IRIS-05 / PAUL-05 — One severity per state. Until Submit is attempted, a step with open
+// items is "incomplete" (neutral Gray 70 outline "!" — same icon as the status panel);
+// after a blocked Submit, Carbon's red invalid state applies in the progress and the panel.
+.sbl-after .progress-calm .cds--progress__warning > * { fill: var(--cds-icon-secondary); }
+
+// ---------------------------------------------------------------------------
+// Wave 2
+// ---------------------------------------------------------------------------
+.sbl-after {
+  // FELIX-10 — The ineligible tile's account name stays readable. The checkbox stays disabled;
+  // the label uses secondary text (7:1 on white) instead of the disabled 25% tone.
+  .eval-tile.is-ineligible .cds--checkbox-label-text,
+  .eval-tile.is-ineligible .cds--checkbox-label { color: var(--cds-text-secondary); }
+
+  // PAUL-01 — "Selected scenario" mark: a neutral outline tag under the ID (not blue: it is not an action).
+  .scenario-tag { margin-block-start: 0.25rem; }
+
+  // IRIS-12 — A mouse click on a tab doesn't leave a focus box; keyboard focus still shows Carbon's ring.
+  .cds--tabs .cds--tabs__nav-item:focus:not(:focus-visible) { outline: none; }
+}

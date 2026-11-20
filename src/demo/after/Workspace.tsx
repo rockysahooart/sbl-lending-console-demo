@@ -19,13 +19,13 @@ import {
   TableRow,
   TextInput,
 } from '@carbon/react';
-import { CheckmarkFilled, CheckmarkOutline, DocumentDownload, Search as SearchIcon, View, WarningAltFilled } from '@carbon/icons-react';
+import { ArrowDown, CheckmarkFilled, CheckmarkOutline, ChevronDown, DocumentDownload, Search as SearchIcon, View, Warning } from '@carbon/icons-react';
 import { useDemo } from '../DemoContext';
 import { usePersistentState } from '../../app/state/ConsoleStore';
 import { ASSET_CLASS_LABEL, PEOPLE, fmtMoney, fmtPct, personById, type Person, type ScenarioId } from '../data';
-import { STEPS, nowStamp, useAfterRequest, useAudit, type Place, type RequestModel, type Section, type YN } from './state';
+import { ROLE_LABEL, STEPS, USERS, nowStamp, useAfterRequest, useAudit, type Place, type RequestModel, type Section, type YN } from './state';
 import { ANCHOR, guidance } from './guidance';
-import { AcknowledgmentModal, EVAL_STATUS } from './Evaluation';
+import { AcknowledgmentModal, EVAL_STATUS, landOn } from './Evaluation';
 import { Check, KV, Money, SelectField, Tag, TextField, cx } from './ui';
 import type { Route } from './AfterApp';
 
@@ -41,13 +41,13 @@ const PLACE_LABEL: Record<Place, string> = { evaluation: 'Evaluation', customer:
 const PLACE_ORDER: Place[] = ['evaluation', 'customer', 'parties', 'loan', 'collateral', 'acknowledgment'];
 const yn = [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }];
 
+/** THEO-02: land on a section after a jump. landOn (Evaluation.tsx) scrolls only #after-main, never the demo frame, and marks the target so it shows where the user arrived. */
+/** Screen-reader status of a step. Before a Submit attempt, open items are shown calmly (IRIS-05), so they are announced as "Incomplete", not "Invalid". */
+const STEP_STATUS: { [id: string]: string } = { 'carbon.progress-step.complete': 'Complete', 'carbon.progress-step.incomplete': 'Incomplete', 'carbon.progress-step.current': 'Current', 'carbon.progress-step.invalid': 'Invalid' };
+const stepStatusText = (id: string, attempted: boolean) => (id === 'carbon.progress-step.invalid' && !attempted ? 'Incomplete' : STEP_STATUS[id] ?? id);
+
 function focusAnchor(id: string, delay = 60) {
-  window.setTimeout(() => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.scrollIntoView({ block: 'start', behavior: 'auto' });
-    (el as HTMLElement).focus({ preventScroll: true });
-  }, delay);
+  window.setTimeout(() => landOn(document.getElementById(id)), delay);
 }
 
 export function Workspace({ route, onRoute }: { route: { page: 'request'; id: ScenarioId; section: Section } | { page: 'confirmation'; id: ScenarioId }; onRoute: (r: Route) => void }) {
@@ -56,6 +56,13 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
   const section: Section = route.page === 'request' ? route.section : 'collateral';
   const { scenario, adoptScenario } = useDemo();
   const [ackOpen, setAckOpen] = useState(false);
+  // A blocked Submit (step 4) switches open items from "incomplete" to "error" in the
+  // progress, the blocker list and the status panel together: one severity per state.
+  const [attempted, setAttempted] = useState(false);
+  useEffect(() => { if (section !== 'collateral') setAttempted(false); }, [section]);
+  // KENJI-03: below lg the step list folds into one "Step n of 4" line (expandable).
+  const [stepsOpen, setStepsOpen] = useState(false);
+  useEffect(() => { setStepsOpen(false); }, [section]);
 
   useEffect(() => {
     if (scenario !== route.id) adoptScenario(route.id);
@@ -99,7 +106,18 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
         <InlineNotification kind="info" lowContrast hideCloseButton className="!max-w-none mb-6" title="Submitted to underwriting" subtitle={`Submitted ${req.submittedAt}. This request is read-only.`} />
       )}
       <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[224px_minmax(0,1fr)_340px] gap-8 items-start">
-        <nav aria-label="Loan request steps" className="lg:sticky lg:top-6">
+        {/* KENJI-03: compact step line below lg — the full list is one tap away, and the status panel one jump away. */}
+        <div className="step-compact lg:hidden">
+          <button type="button" className="step-compact__toggle" aria-expanded={stepsOpen} aria-controls="loan-request-steps" onClick={() => setStepsOpen(!stepsOpen)}>
+            <span className="t-heading-compact-01">Step {idx + 1} of {STEPS.length}</span>
+            <ChevronDown size={16} aria-hidden="true" className={cx('transition-transform motion-reduce:transition-none', stepsOpen && 'rotate-180')} />
+          </button>
+          <a href="#application-status" className="step-compact__status cds--link" onClick={(e) => { e.preventDefault(); landOn(document.getElementById('application-status')); }}>
+            Application status{m.readiness.some((r) => !r.done) && <span className="tabular-nums"> · {m.readiness.filter((r) => !r.done).length} open</span>}
+            <ArrowDown size={16} aria-hidden="true" />
+          </a>
+        </div>
+        <nav id="loan-request-steps" aria-label="Loan request steps" className={cx('lg:sticky lg:top-6 lg:block', stepsOpen ? 'block' : 'hidden', !attempted && 'progress-calm')}>
           <ProgressIndicator vertical currentIndex={idx} onChange={(i: number) => go(STEPS[i].key)} spaceEqually={false}>
             {STEPS.map((st, i) => {
               const state = m.sectionState(st.key);
@@ -112,6 +130,7 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
                   secondaryLabel={current ? 'In progress' : state === 'complete' ? 'Completed' : state === 'attention' ? `${open} open item${open > 1 ? 's' : ''}` : 'Not started'}
                   complete={!current && state === 'complete'}
                   invalid={!current && state === 'attention'}
+                  translateWithId={(mid: string) => stepStatusText(mid, attempted)}
                 />
               );
             })}
@@ -124,7 +143,7 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
               {section === 'customer' && <CustomerStep m={m} onGo={go} />}
               {section === 'parties' && <PartiesStep m={m} />}
               {section === 'loan' && <LoanStep m={m} />}
-              {section === 'collateral' && <CollateralStep m={m} onGo={go} onSubmitted={() => onRoute({ page: 'confirmation', id: route.id })} />}
+              {section === 'collateral' && <CollateralStep m={m} onGo={go} attempted={attempted} setAttempted={setAttempted} onSubmitted={() => onRoute({ page: 'confirmation', id: route.id })} />}
             </div>
           </fieldset>
           {section !== 'collateral' && (
@@ -137,7 +156,7 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
             </footer>
           )}
         </div>
-        <StatusPanel m={m} onGo={go} />
+        <StatusPanel m={m} onGo={go} blocked={attempted && section === 'collateral'} />
       </div>
       <AcknowledgmentModal m={m} open={ackOpen} onClose={() => setAckOpen(false)} onStart={() => setAckOpen(false)} startLabel="Save acknowledgment" />
     </div>
@@ -224,10 +243,11 @@ function MaskedId({ person, requestId }: { person: Person; requestId: string }) 
   );
 }
 
-function Screening({ date = '11/18/2025' }: { date?: string }) {
+/** ADA-08: one verification date (the client record's) for every party; an expired ID is never shown as "verified". */
+function Screening({ date = '11/18/2025', idExpired = false }: { date?: string; idExpired?: boolean }) {
   return (
     <span className="inline-flex flex-wrap gap-2">
-      <Tag tone="success">Identity verified {date}</Tag>
+      {idExpired ? <Tag tone="error">Identity on file {date} · ID expired</Tag> : <Tag tone="success">Identity verified {date}</Tag>}
       <Tag tone="success">Sanctions screening: no match {date}</Tag>
     </span>
   );
@@ -254,10 +274,10 @@ function CustomerStep({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: strin
           />
           <div>
             <p className="t-label-01 text-[var(--cds-text-secondary)]">Total Maximum Borrowing Power</p>
-            <p className="t-heading-05 tabular-nums mt-1 text-[var(--cds-link-primary)]" aria-live="polite"><Money value={ev.total} /></p>
+            <p className="t-heading-05 tabular-nums mt-1"><Money value={ev.total} /></p>
             <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-1">
               Carried over from Total Evaluation.{' '}
-              <button type="button" className="text-[var(--cds-link-primary)] hover:underline" onClick={() => onGo('evaluation', 'total-evaluation')}>View Evaluation</button>
+              <button type="button" className="t-helper-01 text-[var(--cds-link-primary)] hover:underline" onClick={() => onGo('evaluation', 'total-evaluation')}>View Evaluation</button>
             </p>
           </div>
         </div>
@@ -265,7 +285,7 @@ function CustomerStep({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: strin
 
       <StepSection id="customer-info" title="Customer Information" right={<Screening />} description="From the client record of 11/18/2025. Read-only; request a correction if anything is out of date.">
         <div className="customer-card">
-          <div className="flex items-center gap-3 pr-6 md:border-r border-[var(--cds-border-subtle-01)]">
+          <div className="flex items-center gap-3 md:pr-6 md:border-r border-[var(--cds-border-subtle-01)]">
             <span className="customer-card__avatar" aria-hidden="true">{p.name.split(' ').map((x) => x[0]).join('').slice(0, 2)}</span>
             <div>
               <p className="t-label-01 text-[var(--cds-text-secondary)]">{s.entityName ? 'Authorized Signer' : 'Primary Borrower'}</p>
@@ -273,7 +293,7 @@ function CustomerStep({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: strin
               {s.entityName && <p className="t-helper-01 text-[var(--cds-text-secondary)]">{s.entityName}</p>}
             </div>
           </div>
-          <dl className="grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 flex-1">
+          <dl className="customer-card__ids grid grid-cols-2 2xl:grid-cols-3 gap-x-6 gap-y-3 flex-1 min-w-0 basis-full md:basis-0">
             <KV label="DOB" value={p.dob} mono />
             <KV label="SSN" value={<MaskedId person={p} requestId={s.requestId} />} />
             <KV label="MDM ID" value={p.mdmId} mono />
@@ -282,7 +302,7 @@ function CustomerStep({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: strin
             <KV label="Email" value={p.email} />
           </dl>
         </div>
-        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5 mt-6">
+        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5 mt-6">
           <KV label="Address Line 1" value={p.address1} />
           <KV label="Address Line 2" value={p.address2 || '—'} />
           <KV label="City" value={p.city} />
@@ -323,7 +343,7 @@ function CustomerStep({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: strin
 
 /* ------------------------------- 2. Co-borrowers ------------------------------- */
 function PartiesStep({ m }: { m: RequestModel }) {
-  const { s, req, update, co, needsOwners, isEntity, owners, pledgesTrust, log } = m;
+  const { s, req, update, co, coIdExpired, needsOwners, isEntity, owners, pledgesTrust, log } = m;
   const p = s.primary;
   const joint = req.appType === 'Joint';
   return (
@@ -375,10 +395,10 @@ function PartiesStep({ m }: { m: RequestModel }) {
         <StepSection
           id="owners"
           title={isEntity ? 'Beneficial Ownership' : 'Trust Ownership'}
-          description={isEntity ? `Individuals owning 25% or more of ${s.entityName}, and the individual with significant control, from the entity record.` : 'Required because a trust account is pledged as collateral. Trustees and beneficial owners from the trust record.'}
+          description={isEntity ? `Individuals owning 25% or more of ${s.entityName}, and the individual with significant control, from the entity record.` : 'Required because a trust account is pledged as collateral. Trustees from the trust record.'}
         >
           <Table size="md" aria-label="Owners">
-            <TableHead><TableRow><TableHeader>Name</TableHeader><TableHeader>Role</TableHeader><TableHeader className="num">Ownership</TableHeader><TableHeader>Verification</TableHeader></TableRow></TableHead>
+            <TableHead><TableRow><TableHeader>Name</TableHeader><TableHeader>Role</TableHeader><TableHeader className="num">{isEntity ? 'Ownership' : 'Share'}</TableHeader><TableHeader>Verification</TableHeader></TableRow></TableHead>
             <TableBody>
               {owners.map((o) => {
                 const per = personById(o.personId);
@@ -387,7 +407,7 @@ function PartiesStep({ m }: { m: RequestModel }) {
                     <TableCell>{per.name}</TableCell>
                     <TableCell>{per.id === p.id ? (isEntity ? 'Managing member (control person)' : 'Trustee') : isEntity ? 'Member' : 'Co-trustee'}</TableCell>
                     <TableCell className="num">{o.pct}%</TableCell>
-                    <TableCell><Screening /></TableCell>
+                    <TableCell><Screening idExpired={!!co && per.id === co.id && coIdExpired} /></TableCell>
                   </TableRow>
                 );
               })}
@@ -469,14 +489,14 @@ function CoBorrowerDetails({ m }: { m: RequestModel }) {
   return (
     <div id="co-details" tabIndex={-1} className="space-y-6 focus:outline-none">
       <div className="customer-card">
-        <div className="flex items-center gap-3 pr-6 md:border-r border-[var(--cds-border-subtle-01)]">
+        <div className="flex items-center gap-3 md:pr-6 md:border-r border-[var(--cds-border-subtle-01)]">
           <span className="customer-card__avatar" aria-hidden="true">{co.name.split(' ').map((x) => x[0]).join('').slice(0, 2)}</span>
           <div>
             <p className="t-label-01 text-[var(--cds-text-secondary)]">Co-Borrower</p>
             <p className="t-heading-02">{co.name}</p>
           </div>
         </div>
-        <dl className="grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 flex-1">
+        <dl className="customer-card__ids grid grid-cols-2 2xl:grid-cols-3 gap-x-6 gap-y-3 flex-1 min-w-0 basis-full md:basis-0">
           <KV label="DOB" value={co.dob} mono />
           <KV label="SSN" value={<MaskedId person={co} requestId={s.requestId} />} />
           <KV label="MDM ID" value={co.mdmId} mono />
@@ -485,13 +505,13 @@ function CoBorrowerDetails({ m }: { m: RequestModel }) {
           <KV label="Email" value={co.email} />
         </dl>
       </div>
-      <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-x-6 gap-y-5">
+      <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-5">
         <KV label="Proof of Identity" value={co.idType} />
         <KV label="ID Number" value={req.coIdUpdate.saved ? req.coIdUpdate.number : co.idNumber} mono />
         <KV label="Place of Issuance" value={co.idPlace} />
         <KV label="Date of Expiration" value={<span className="inline-flex flex-wrap items-center gap-2"><span className="tabular-nums">{req.coIdUpdate.saved ? req.coIdUpdate.expires : co.idExpires}</span><Tag tone={coIdExpired ? 'error' : 'success'}>{coIdExpired ? 'Expired' : 'Valid'}</Tag></span>} />
-        <KV label="Screening" value={<Screening date="11/19/2025" />} />
       </dl>
+      <dl><KV label="Screening" value={<Screening idExpired={coIdExpired} />} /></dl>
       {coIdExpired && (
         <div>
           <InlineNotification kind="error" lowContrast hideCloseButton className="!max-w-none" title="Identification expired" subtitle="Record a current, unexpired government-issued ID before you submit this request." />
@@ -527,7 +547,7 @@ function LoanStep({ m }: { m: RequestModel }) {
   return (
     <>
       <StepSection id="loan-details" title="Loan Details">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-6">
+        <div className="field-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-6">
           <SelectField label="Method of Application" options={['In Branch', 'Digital Assisted', 'Relationship Manager Initiated']} value={req.method} onChange={(v) => update({ method: v })} helper="From the opportunity." />
           <SelectField label="Primary Source of Wealth" options={['Business Income', 'Investments', 'Real Estate', 'Inheritance']} value={req.wealth1} onChange={(v) => update({ wealth1: v })} />
           <SelectField label="Secondary Source of Wealth" optional options={['Investments', 'Spouse Income', 'Other']} value={req.wealth2} onChange={(v) => update({ wealth2: v })} />
@@ -573,7 +593,7 @@ function LoanStep({ m }: { m: RequestModel }) {
       </StepSection>
 
       <StepSection id="product" title="Product Details" description="Set by the product. Read-only.">
-        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5">
+        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5">
           <KV label="Product Category" value="Line of Credit" />
           <KV label="Product Type" value="QLP 2" />
           <KV label="Personal Loan Purpose" value="Personal Only" />
@@ -590,7 +610,7 @@ function LoanStep({ m }: { m: RequestModel }) {
       </StepSection>
 
       <StepSection id="booking" title="Booking">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="field-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           <SelectField label="Booking Cost Center" options={['Commercial Lending', 'Small Business Banking', 'Private Banking']} value={req.costCenter} onChange={(v) => update({ costCenter: v })} helper="From your banker profile." />
           <TextField label="RM Memo" optional value={req.memo} onChange={(v) => update({ memo: v })} />
           <SelectField label="Should this be reviewed for Sustainability Requirements?" options={['Yes', 'No']} value={req.sustainability} onChange={(v) => update({ sustainability: v as YN })} />
@@ -598,12 +618,12 @@ function LoanStep({ m }: { m: RequestModel }) {
       </StepSection>
 
       <StepSection id="ach" title="ACH Auto Pay Option">
-        <div className="flex flex-wrap items-end gap-8">
+        <div className="field-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-end">
           <RadioButtonGroup legendText="Pay automatically by ACH?" name="ach" valueSelected={req.ach ? 'Yes' : 'No'} onChange={(v: string | number | undefined) => update({ ach: v === 'Yes' })}>
             <RadioButton id="ach-yes" labelText="Yes" value="Yes" />
             <RadioButton id="ach-no" labelText="No" value="No" />
           </RadioButtonGroup>
-          {req.ach && <div className="w-64"><SelectField label="Debit Account" options={[...deposits, 'Other account on file']} value={req.achAccount} onChange={(v) => update({ achAccount: v })} /></div>}
+          {req.ach && <div><SelectField label="Debit Account" options={[...deposits, 'Other account on file']} value={req.achAccount} onChange={(v) => update({ achAccount: v })} /></div>}
         </div>
       </StepSection>
     </>
@@ -611,17 +631,23 @@ function LoanStep({ m }: { m: RequestModel }) {
 }
 
 /* --------------------------------- 4. Collaterals --------------------------------- */
-function CollateralStep({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (p: Place, a?: string) => void; onSubmitted: () => void }) {
+function CollateralStep({ m, onGo, onSubmitted, attempted, setAttempted }: { m: RequestModel; onGo: (p: Place, a?: string) => void; onSubmitted: () => void; attempted: boolean; setAttempted: (b: boolean) => void }) {
   const { s, req, ev, changeEstimate, readiness, setReq, role, log } = m;
   const { track, recordGaps } = useDemo();
+  const { setGlobal } = useAudit();
+  const switchToLoanOfficer = () => {
+    setGlobal((g) => ({ ...g, role: 'Relationship Banker', audit: [{ at: nowStamp(), user: USERS['Relationship Banker'], role: ROLE_LABEL['Relationship Banker'], event: 'Role changed', detail: `Signed in as ${ROLE_LABEL['Relationship Banker']}` }, ...g.audit] }));
+    setTimeout(() => document.getElementById('submit-request')?.focus(), 60);
+  };
   const [, setSubmittedMap] = usePersistentState<Record<string, boolean>>('after:submitted', () => ({}));
   const [expanded, setExpanded] = useState<string[]>([]);
-  const [attempted, setAttempted] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const open = readiness.filter((r) => !r.done).sort((a, b) => PLACE_ORDER.indexOf(a.step) - PLACE_ORDER.indexOf(b.step));
   const selectable = ev.rows.filter((r) => r.status !== 'ineligible');
   const allSelected = selectable.every((r) => r.pledged);
   const selected = ev.rows.filter((r) => r.pledged).length;
+  // The owner line earns its place only when accounts belong to different parties (joint, trust).
+  const mixedOwners = new Set(ev.rows.map((r) => `${r.account.owner} · ${r.account.relationship}`)).size > 1;
   const locked = req.status !== 'draft';
   const toggleAll = () => {
     const next = { ...req.pledged };
@@ -661,7 +687,7 @@ function CollateralStep({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (p: P
           <Button kind="ghost" size="sm" className="!px-0" onClick={toggleAll}>{allSelected ? 'Deselect All' : 'Select All'}</Button>
         </div>
         <div className="overflow-x-auto">
-          <Table aria-label="Collaterals" size="lg" className="min-w-[760px]">
+          <Table aria-label="Collaterals" size="md" className="collateral-table min-w-[760px]">
             <TableHead>
               <TableRow>
                 <TableExpandHeader aria-label="Expand row" />
@@ -697,7 +723,7 @@ function CollateralStep({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (p: P
                         onChange={(_: unknown, { checked }: { checked: boolean }) => changeEstimate({ pledged: { ...req.pledged, [r.account.id]: checked } }, `${checked ? 'Selected' : 'Deselected'}: ${r.account.name} ${r.account.number}`)}
                       />
                     </TableCell>
-                    <TableCell className="font-semibold">{r.account.name}<span className="block t-helper-01 font-normal text-[var(--cds-text-secondary)]">{r.account.owner} · {r.account.relationship}</span></TableCell>
+                    <TableCell className="font-semibold">{r.account.name}{mixedOwners && <span className="block t-helper-01 font-normal text-[var(--cds-text-secondary)]">{r.account.owner} · {r.account.relationship}</span>}</TableCell>
                     <TableCell className="t-code">{r.account.number}</TableCell>
                     <TableCell className="num"><Money value={r.value} /></TableCell>
                     <TableCell className="num font-semibold"><Money value={r.lendable} /></TableCell>
@@ -733,9 +759,11 @@ function CollateralStep({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (p: P
       <footer className="step-footer">
         <Button kind="ghost" size="md" onClick={() => onGo('loan')}>Back</Button>
         <div className="flex items-center gap-4">
-          <p className="t-helper-01 text-[var(--cds-text-secondary)]" aria-live="polite">{selected} of {ev.rows.length} collaterals selected</p>
-          {!locked && role === 'Relationship Banker' && <Button size="md" onClick={trySubmit}>Submit</Button>}
+          <p className="t-helper-01 text-[var(--cds-text-secondary)]" aria-live="polite">{selected} of {ev.rows.length}<span className="hidden sm:inline"> collaterals</span> selected</p>
+          {!locked && role === 'Relationship Banker' && <Button id="submit-request" size="md" onClick={trySubmit}>Submit</Button>}
           {!locked && role === 'Credit Officer' && <p className="t-helper-01 text-[var(--cds-text-secondary)]">The loan officer submits this request.</p>}
+          {/* PAUL-F1: the same role hand-back as Evaluation, so the Credit Officer path never ends without a next action. */}
+          {!locked && role === 'Credit Officer' && <Button kind="tertiary" size="md" onClick={switchToLoanOfficer}>Switch to Loan Officer</Button>}
         </div>
       </footer>
       <Modal open={confirm} size="sm" modalHeading="Submit loan request to underwriting?" primaryButtonText="Submit" secondaryButtonText="Cancel" onRequestSubmit={submit} onRequestClose={() => setConfirm(false)}>
@@ -752,7 +780,7 @@ function CollateralStep({ m, onGo, onSubmitted }: { m: RequestModel; onGo: (p: P
 }
 
 /* ------------------------------- Application status ------------------------------- */
-function StatusPanel({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: string) => void }) {
+function StatusPanel({ m, onGo, blocked = false }: { m: RequestModel; onGo: (p: Place, a?: string) => void; blocked?: boolean }) {
   const { req, ev, readiness, s } = m;
   const g = guidance(m);
   const { audit } = useAudit();
@@ -762,7 +790,7 @@ function StatusPanel({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: string
   const done = readiness.filter((r) => r.done).length;
   const events = audit.filter((e) => e.requestId === s.requestId);
   return (
-    <aside aria-label="Application status" className="status-panel xl:sticky xl:top-6 lg:col-span-2 xl:col-span-1">
+    <aside id="application-status" tabIndex={-1} aria-label="Application status" className="status-panel xl:sticky xl:top-6 lg:col-start-2 xl:col-start-auto focus:outline-none">
       <section aria-labelledby="fin-h" className="px-4 pt-4 pb-4 space-y-3 border-b border-[var(--cds-border-subtle-01)]">
         <h2 id="fin-h" className="t-heading-02">Application status</h2>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 items-end">
@@ -784,6 +812,7 @@ function StatusPanel({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: string
           <span className="t-helper-01 tabular-nums text-[var(--cds-text-secondary)]">{done} of {readiness.length} complete</span>
         </div>
         <div className="h-1 bg-[var(--cds-border-subtle-01)] mt-2" aria-hidden="true"><div className="h-full bg-[var(--cds-interactive)]" style={{ width: `${(done / readiness.length) * 100}%` }} /></div>
+        {blocked && done < readiness.length && <p className="t-helper-01 text-[var(--cds-text-secondary)] mt-3">{readiness.length - done} open: listed in the main column.</p>}
         <ul className="mt-3">
           {PLACE_ORDER.map((place) => {
             const items = readiness.filter((r) => r.step === place);
@@ -792,11 +821,11 @@ function StatusPanel({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: string
             return (
               <li key={place} className="py-2 border-b border-[var(--cds-border-subtle-01)] last:border-0">
                 <p className="flex items-center gap-2 t-heading-compact-01">
-                  {openItems.length ? <WarningAltFilled size={16} className="fill-[var(--cds-support-warning)] [&_path:first-child]:fill-black" aria-hidden="true" /> : <CheckmarkFilled size={16} className="fill-[var(--cds-support-success)]" aria-hidden="true" />}
+                  {!openItems.length ? <CheckmarkFilled size={16} className="fill-[var(--cds-support-success)]" aria-hidden="true" /> : <Warning size={16} className={blocked ? 'fill-[var(--cds-support-error)]' : 'fill-[var(--cds-icon-secondary)]'} aria-hidden="true" />}
                   {PLACE_LABEL[place]}
                   <span className="ml-auto t-helper-01 font-normal text-[var(--cds-text-secondary)]">{openItems.length ? `${openItems.length} open` : 'Complete'}</span>
                 </p>
-                {openItems.length > 0 && (
+                {openItems.length > 0 && !blocked && (
                   <ul className="mt-1 pl-6 space-y-1">
                     {openItems.map((r) => (
                       <li key={r.id}><button type="button" className="text-left t-body-compact-01 text-[var(--cds-link-primary)] hover:underline" onClick={() => onGo(r.step, ANCHOR[r.id])}>{r.label}</button></li>
@@ -883,7 +912,7 @@ function Confirmation({ m, onRoute }: { m: RequestModel; onRoute: (r: Route) => 
       </div>
       <footer className="step-footer">
         <Button kind="ghost" size="md" onClick={() => onRoute({ page: 'request', id: s.id, section: 'customer' })}>View Loan Details</Button>
-        <Button size="md" onClick={() => onRoute({ page: 'console' })}>Return to Console</Button>
+        <Button size="md" onClick={() => onRoute({ page: 'console', tab: 'submitted', expanded: s.requestId })}>Return to Console</Button>
       </footer>
     </div>
   );

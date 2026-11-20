@@ -1,0 +1,44 @@
+// Owner: Mara — implementation round (see docs/design-team-change-log.md).
+// Only Mara edits this file. Loaded after carbon.scss, so rules here refine it.
+@use '@carbon/react/scss/breakpoint' as bp;
+@use '@carbon/react/scss/type';
+
+// Carbon productive easing and durations (motion tokens, written out so this partial stays standalone).
+$productive-exit: cubic-bezier(0.2, 0, 1, 0.9);
+$productive-standard: cubic-bezier(0.2, 0, 0.38, 0.9);
+
+.sbl-after {
+  // MARA-01 — Landing cue. After a jump (landOn() marks the target data-landed), the target
+  // starts on Highlight blue and settles to its own surface once, so the eye finds it.
+  // Scrolling stays instant (no smooth scroll). Reduced motion: no fade, the outline alone
+  // (team/theo.scss) marks the landing.
+  @media (prefers-reduced-motion: no-preference) {
+    [data-landed][tabindex='-1'] { animation: sbl-landed 700ms $productive-exit both; }
+  }
+
+  // MARA-03 — The coverage and readiness bars in Application status follow a change in
+  // 110ms, so the effect of selecting collateral is perceivable. No number counting.
+  @media (prefers-reduced-motion: no-preference) {
+    .status-panel .h-full { transition: inline-size 110ms $productive-standard, width 110ms $productive-standard; }
+  }
+}
+
+@keyframes sbl-landed {
+  from { background-color: var(--cds-highlight, #d6e9ff); }
+}
+
+// MARA-02 — Reduced motion, honoured consistently. Carbon removes the modal fade but keeps
+// the movement: modal slide, side-nav and user-menu slide, overlay fade, accordion arrow.
+// Under reduce they snap. Colour-only transitions (hover, selection) stay: they don't move.
+// Unscoped modal selectors: Carbon modals in After; Before does not use Carbon.
+@media (prefers-reduced-motion: reduce) {
+  .sbl-after .cds--side-nav,
+  .sbl-after .cds--side-nav__overlay,
+  .sbl-after .cds--header-panel,
+  .sbl-after .cds--accordion__arrow,
+  .sbl-after .cds--table-expand__svg,
+  .cds--modal,
+  .cds--modal-container {
+    transition: none !important;
+  }
+}

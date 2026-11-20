@@ -11,6 +11,7 @@ import {
   TabPanel,
   TabPanels,
   Tabs,
+  Tag as CTag,
   Table,
   TableBody,
   TableCell,
@@ -21,10 +22,11 @@ import {
   TableHeader,
   TableRow,
 } from '@carbon/react';
-import { ArrowRight, ArrowsVertical, CheckmarkFilled, Filter, WarningAltFilled } from '@carbon/icons-react';
+import { ArrowRight, ArrowsVertical, CheckmarkFilled, Filter, Warning } from '@carbon/icons-react';
 import { BASELINE_PENDING, BASELINE_SUBMITTED } from '../beforeData';
 import { ACTIVE_LINES, fmtMoney, fmtPct, type ScenarioId } from '../data';
 import { useAfterRequest } from './state';
+import { useDemo } from '../DemoContext';
 import { guidance } from './guidance';
 import { PENDING_REFS, SUBMITTED_REFS, refPower, type AppType } from './records';
 import { KV, Tag, cx, type Tone } from './ui';
@@ -71,6 +73,8 @@ interface Row {
   history: { date: string; action: string; evaluator: string; notes: string }[];
   action: { label: string; route: Route };
   open?: { label: string; route: Route };
+  /** PAUL-01: the scenario chosen in the demo bar / Preface. */
+  current?: boolean;
 }
 
 const TABS: { key: ConsoleTab; label: string }[] = [
@@ -84,6 +88,7 @@ const money = (n: number, short = false) => <span className={cx('font-semibold t
 export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?: string; onRoute: (r: Route) => void }) {
   // Fixed order of hook calls (three scenarios).
   const models = (['single', 'joint', 'complex'] as ScenarioId[]).map((id) => useAfterRequest(id));
+  const { scenario } = useDemo();
 
   const scenarioRows: Row[] = models.map((m, i) => {
     const base = BASELINE_PENDING[i];
@@ -102,7 +107,8 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
     return {
       key: s.id,
       applicationId: s.requestId,
-      businessName: base.businessName,
+      // ADA-09: name the application type from the request itself (Before's adapter labels every non-entity scenario "(Individual)").
+      businessName: s.entityName ?? `${s.primary.name} (${req.appType === 'Joint' ? 'Joint' : 'Individual'})`,
       primaryApplicant: base.primaryApplicant,
       type: req.appType === 'Entity' ? 'Entity' : req.appType,
       loanType: base.loanType,
@@ -125,6 +131,7 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
       ],
       action,
       open: action,
+      current: s.id === scenario,
     };
   });
 
@@ -150,7 +157,8 @@ export function Console({ tab, expanded, onRoute }: { tab: ConsoleTab; expanded?
       exceptions: r.exceptions,
       openItems: r.openItems,
       history: r.history,
-      action: { label: r.status === 'Pending Review' ? 'Evaluate' : 'Open', route: { page: 'record', id: r.id } },
+      // PAUL-01: reference records are read-only, so their action is always "Open"; "Evaluate" means interactive.
+      action: { label: 'Open', route: { page: 'record', id: r.id } },
       open: { label: 'Open application', route: { page: 'record', id: r.id } },
     };
   });
@@ -359,14 +367,14 @@ function QueueTable({ rows, onRoute, empty, initialExpanded, onExpandedChange }:
                   aria-label={isOpen ? `Collapse ${r.applicationId}` : `Expand ${r.applicationId}`}
                   expandIconDescription={isOpen ? 'Collapse row' : 'Expand row'}
                 >
-                  <TableCell className="font-semibold tabular-nums whitespace-nowrap">{r.applicationId}</TableCell>
+                  <TableCell className="font-semibold tabular-nums whitespace-nowrap">{r.applicationId}{r.current && <span className="block"><CTag type="outline" size="sm" className="scenario-tag !ml-0 !mb-0">Selected scenario</CTag></span>}</TableCell>
                   <TableCell>{r.businessName}</TableCell>
                   <TableCell>{r.primaryApplicant}</TableCell>
                   <TableCell className="cell-secondary">{r.loanType}</TableCell>
                   <TableCell><Tag tone={STATUS_TONE[r.status] ?? 'neutral'}>{r.status}</Tag></TableCell>
                   <TableCell className="cell-secondary tabular-nums">{r.lastUpdated}</TableCell>
                   <TableCell>
-                    <Button kind={r.action.label === 'Respond' ? 'primary' : 'ghost'} size="sm" onClick={() => onRoute(r.action.route)} aria-label={`${r.action.label} ${r.applicationId}`}>{r.action.label}</Button>
+                    <Button kind={r.action.label === 'Respond' ? 'tertiary' : 'ghost'} size="sm" onClick={() => onRoute(r.action.route)} aria-label={`${r.action.label} ${r.applicationId}`}>{r.action.label}</Button>
                   </TableCell>
                 </TableExpandRow>,
                 isOpen ? (
@@ -418,7 +426,7 @@ function RowDetails({ row, onRoute }: { row: Row; onRoute: (r: Route) => void })
                 <ul className="mt-1 space-y-1">
                   {row.openItems.slice(0, 4).map((o) => (
                     <li key={o.label} className="flex items-start gap-2 t-body-01">
-                      <WarningAltFilled size={16} className="mt-0.5 shrink-0 fill-[var(--cds-support-warning)] [&_path:first-child]:fill-black" aria-hidden="true" />
+                      <Warning size={16} className="mt-0.5 shrink-0 fill-[var(--cds-icon-secondary)]" aria-hidden="true" />
                       <span>{o.label}<span className="t-helper-01 text-[var(--cds-text-secondary)]"> · {o.step}</span></span>
                     </li>
                   ))}
@@ -464,8 +472,11 @@ export function QueueToolbar({ by, onBy, q, onQ, newest, onSort, filterOpen, onF
         <div className="flex-1 min-w-[16rem]">
           <Search size="md" labelText={`Search by ${label}`} placeholder={`Search by ${label}…`} value={q} onChange={(e: { target: HTMLInputElement }) => onQ(e.target.value)} />
         </div>
-        <Button kind="tertiary" size="md" renderIcon={Filter} aria-expanded={filterOpen} onClick={onFilter}>{filterCount ? `Filter (${filterCount})` : 'Filter'}</Button>
-        <Button kind="tertiary" size="md" renderIcon={ArrowsVertical} onClick={onSort}>Last Updated: {newest ? 'Newest First' : 'Oldest First'}</Button>
+        {/* KENJI-10: Filter and Sort share one row on phones, so the table starts higher. "Last Updated:" stays in the accessible name. */}
+        <div className="queue-toolbar__actions flex items-stretch gap-2 sm:gap-4">
+          <Button kind="tertiary" size="md" renderIcon={Filter} aria-expanded={filterOpen} onClick={onFilter}>{filterCount ? `Filter (${filterCount})` : 'Filter'}</Button>
+          <Button kind="tertiary" size="md" renderIcon={ArrowsVertical} onClick={onSort}><span className="sr-only sm:not-sr-only sm:mr-1">Last Updated: </span>{newest ? 'Newest First' : 'Oldest First'}</Button>
+        </div>
       </div>
       {children}
     </div>

@@ -24,11 +24,14 @@ export type YN = '' | 'Yes' | 'No';
 export type Role = 'Relationship Banker' | 'Credit Officer';
 
 export const USERS: Record<Role, string> = { 'Relationship Banker': 'S. Mitchell', 'Credit Officer': 'M. Okonkwo' };
+/** Display names for roles. The banker role keeps Before's label, "Loan Officer" (Before header); the Role values stay as they are. */
+export const ROLE_LABEL: Record<Role, string> = { 'Relationship Banker': 'Loan Officer', 'Credit Officer': 'Credit Officer' };
 
 export interface AuditEvent {
   at: string;
   user: string;
-  role: Role;
+  /** Display label of the role at the time of the event (ROLE_LABEL). */
+  role: string;
   event: string;
   detail: string;
   requestId?: string;
@@ -195,7 +198,7 @@ export function useAudit() {
   const [global, setGlobal] = useAfterGlobal();
   const log = useCallback(
     (event: string, detail: string, requestId?: string) =>
-      setGlobal((g) => ({ ...g, audit: [{ at: nowStamp(), user: USERS[g.role], role: g.role, event, detail, requestId }, ...g.audit] })),
+      setGlobal((g) => ({ ...g, audit: [{ at: nowStamp(), user: USERS[g.role], role: ROLE_LABEL[g.role], event, detail, requestId }, ...g.audit] })),
     [setGlobal],
   );
   return { role: global.role, user: USERS[global.role], audit: global.audit, log, setGlobal, global };

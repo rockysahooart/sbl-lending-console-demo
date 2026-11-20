@@ -1,0 +1,17 @@
+// Paul — final review consistency fixes (scoped to the After experience).
+.sbl-after {
+  // PAUL-F3 · Active Credit line detail: the actionable LTV notification sits in a one-third column.
+  // Carbon lays text and action side by side, which crushed the message to one word per line at 1440.
+  // In this narrow container the action wraps under the message instead.
+  #credit-detail .cds--actionable-notification {
+    flex-wrap: wrap;
+  }
+  #credit-detail .cds--actionable-notification .cds--actionable-notification__details {
+    flex: 1 1 100%;
+    min-inline-size: 0;
+  }
+  #credit-detail .cds--actionable-notification .cds--actionable-notification__button-wrapper {
+    padding-inline-start: 3rem; // aligns the action with the message text, past the status icon
+    padding-block-end: 1rem;
+  }
+}

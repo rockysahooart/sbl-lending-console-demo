@@ -5,22 +5,26 @@ import '@fontsource/ibm-plex-sans/500.css';
 import '@fontsource/ibm-plex-sans/600.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import './carbon.scss';
-import { Header, HeaderGlobalAction, HeaderGlobalBar, HeaderMenuButton, HeaderName, HeaderPanel, Modal, SideNav, SideNavItems, SideNavLink, SkipToContent, Button } from '@carbon/react';
+import './team/iris.scss';
+import './team/theo.scss';
+import './team/kenji.scss';
+import './team/mara.scss';
+import './team/felix.scss';
+import './team/paul.scss';
+import { Header, HeaderGlobalAction, HeaderGlobalBar, HeaderMenuButton, HeaderName, HeaderPanel, Modal, Select, SelectItem, SideNav, SideNavItems, SideNavLink, SkipToContent, Button } from '@carbon/react';
 import { UserAvatar } from '@carbon/icons-react';
 import { useDemo, type Stage } from '../DemoContext';
 import { usePersistentState } from '../../app/state/ConsoleStore';
 import { SCENARIOS, type ScenarioId } from '../data';
 import { scenarioOfApp, type Loc } from '../sync';
-import { SelectField } from './ui';
 import { Console } from './Console';
 import { Evaluation } from './Evaluation';
 import { Record } from './Record';
 import { Workspace } from './Workspace';
 import { Underwriting, ActiveCredit } from './PostUnderwriting';
-import { AfterGlobalProvider, STEPS, USERS, nowStamp, useAudit, type Role, type Section } from './state';
+import { AfterGlobalProvider, ROLE_LABEL, STEPS, USERS, nowStamp, useAudit, type Role, type Section } from './state';
 
 const FULL_NAME: Record<Role, string> = { 'Relationship Banker': 'Sarah Mitchell', 'Credit Officer': 'Michael Okonkwo' };
-const ROLE_LABEL: Record<Role, string> = { 'Relationship Banker': 'Loan Officer', 'Credit Officer': 'Credit Officer' };
 import { useConsoleStore } from '../../app/state/ConsoleStore';
 
 export type ConsoleTab = 'pending' | 'evaluations' | 'submitted';
@@ -71,6 +75,35 @@ export function stageOf(r: Route): Stage {
   return 'servicing';
 }
 
+/** Browser tab title per screen, built from the screen names already on the page (FELIX-04). */
+const stepLabel = (sec: Section) => { const i = STEPS.findIndex((x) => x.key === sec); return `${i + 1}. ${STEPS[i].label}`; };
+const docTitleOf = (r: Route) => {
+  const screen =
+    r.page === 'console' ? '' :
+    r.page === 'evaluation' ? `Evaluation · ${reqId(r.id)}` :
+    r.page === 'record' ? `${r.id}` :
+    r.page === 'request' ? `${stepLabel(r.section)} · ${reqId(r.id)}` :
+    r.page === 'confirmation' ? `Loan Request Submitted · ${reqId(r.id)}` :
+    r.page === 'review' ? `Pending Review${r.id ? ` · ${r.id}` : ''}` :
+    `Active Credit${r.id ? ` · ${r.id}` : ''}`;
+  return `${screen ? `${screen} — ` : ''}Securities Lending Console (After)`;
+};
+
+/**
+ * Move focus to the new screen's h1 (FELIX-01, FELIX-09). Headings rendered by the screens are made
+ * programmatically focusable here, so no screen component has to change. Falls back to <main>.
+ */
+function focusPageHeading() {
+  const h = document.querySelector<HTMLElement>('#after-main h1, #after-signed-out h1');
+  const target = h ?? document.getElementById('after-main');
+  if (!target) return;
+  if (h && !h.hasAttribute('tabindex')) h.setAttribute('tabindex', '-1');
+  target.focus({ preventScroll: true });
+}
+
+/** Closed menus must leave the Tab order (FELIX-02, KENJI-06). React 18 has no typed `inert`, so it is passed as an attribute. */
+const inertWhen = (closed: boolean) => (closed ? ({ inert: '' } as object) : {});
+
 const PAGES = ['console', 'evaluation', 'record', 'request', 'confirmation', 'review', 'credit'];
 const isRoute = (r: unknown): r is Route => {
   const x = r as Route | undefined;
@@ -115,7 +148,10 @@ function AfterInner() {
     if (lastJump.current === jumpToken) return;
     lastJump.current = jumpToken;
     const done = read<Record<string, boolean>>('after:submitted') ?? {};
-    const next = locToRoute(loc.after, (id) => !!done[id]);
+    const mapped = locToRoute(loc.after, (id) => !!done[id]);
+    // THEO-06: once the application is started, the acknowledgment is complete; a history jump lands on Evaluation, not the dialog.
+    const started = mapped.page === 'evaluation' && mapped.ack && (read<{ visited?: unknown[] }>(`after:req:${mapped.id}`)?.visited?.length ?? 0) > 0;
+    const next: Route = started ? { page: 'evaluation', id: mapped.id } : mapped;
     pending.current = JSON.stringify(routeToLoc(next));
     setRoute(next);
     setJumpKey((k) => k + 1);
@@ -130,9 +166,32 @@ function AfterInner() {
   }, [locKey, jumpKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // New screen or new application: start at the top. (Expanding a row or selecting a line doesn't scroll.)
   const scrollKey = route.page === 'review' || route.page === 'credit' || route.page === 'console' ? route.page : `${route.page}:${(route as { id?: string }).id}:${(route as { section?: string }).section ?? ''}`;
+  // …and land focus on the new screen's h1, so keyboard and screen-reader users know the page changed (FELIX-01).
+  // Runs on the next frame, before in-page landings (status-panel links, Pending Review / Active Credit detail,
+  // 50–150 ms timers), which therefore still win. On first mount, focus the user already placed (e.g. the
+  // Before/After toggle) is kept; only a lost focus (<body>) is rescued.
+  // Keyed on the last handled screen (not a mount flag) so StrictMode's double effect run doesn't count as a navigation.
+  const landedOn = useRef<string | null>(null);
   useEffect(() => {
+    const key = `${scrollKey}|${signedOut}`;
+    if (landedOn.current === key) return;
+    const first = landedOn.current === null;
+    landedOn.current = key;
     document.getElementById('after-main')?.scrollTo({ top: 0 });
-  }, [scrollKey]);
+    if (first && document.activeElement && document.activeElement !== document.body) return;
+    requestAnimationFrame(() => {
+      if (document.activeElement?.closest('[role=dialog]')) return; // an open dialog owns focus
+      focusPageHeading();
+    });
+  }, [scrollKey, signedOut]);
+  // Browser tab title follows the screen (FELIX-04); the previous title is restored when After unmounts.
+  useEffect(() => {
+    const prev = document.title;
+    return () => { document.title = prev; };
+  }, []);
+  useEffect(() => {
+    document.title = signedOut ? 'Signed out — Securities Lending Console (After)' : docTitleOf(route);
+  }, [locKey, signedOut]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Same menu as the original console (Evaluations, Pending Review), plus Active Credit.
   const nav = [
@@ -149,13 +208,13 @@ function AfterInner() {
 
   if (signedOut) {
     return (
-      <div className="sbl-after h-full grid place-items-center">
+      <main id="after-signed-out" className="sbl-after h-full grid place-items-center">
         <div className="max-w-md px-6">
-          <h1 className="t-heading-04">You are signed out</h1>
+          <h1 className="t-heading-04" tabIndex={-1}>You are signed out</h1>
           <p className="t-body-01 text-[var(--cds-text-secondary)] mt-3">Your session ended. Draft requests are saved. Sign in to continue.</p>
           <Button size="md" className="mt-6" onClick={() => { setSignedOut(false); log('Signed in', 'Session started'); }}>Sign in</Button>
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -168,8 +227,9 @@ function AfterInner() {
           <span className="inline-block w-1 h-4 bg-[var(--sbl-brand-accent)] mr-2" aria-hidden="true" />
           Securities Lending Console
         </HeaderName>
-        <p className="sbl-header-title t-heading-02" aria-hidden="true">{titleOf(route)}</p>
-        <SideNav aria-label="Menu" expanded={menuOpen} isPersistent={false} onOverlayClick={() => setMenuOpen(false)} onSideNavBlur={() => setMenuOpen(false)}>
+        {/* IRIS-12: on the Console the centred title would repeat the product name beside it; the sr-only h1 still names the page. */}
+        {route.page !== 'console' && <p className="sbl-header-title t-heading-02" aria-hidden="true">{titleOf(route)}</p>}
+        <SideNav aria-label="Menu" {...inertWhen(!menuOpen)} expanded={menuOpen} isPersistent={false} onOverlayClick={() => setMenuOpen(false)} onSideNavBlur={() => setMenuOpen(false)}>
           <SideNavItems>
             {nav.map(({ page, label }) => (
               <SideNavLink
@@ -177,7 +237,7 @@ function AfterInner() {
                 href="#"
                 isActive={activeNav === page}
                 aria-current={activeNav === page ? 'page' : undefined}
-                onClick={(e: React.MouseEvent) => { e.preventDefault(); setRoute({ page } as Route); setMenuOpen(false); }}
+                onClick={(e: React.MouseEvent) => { e.preventDefault(); setRoute({ page } as Route); setMenuOpen(false); if (activeNav === page) requestAnimationFrame(focusPageHeading); }}
               >
                 {label}
               </SideNavLink>
@@ -193,28 +253,34 @@ function AfterInner() {
             <UserAvatar size={20} />
           </HeaderGlobalAction>
         </HeaderGlobalBar>
-        <HeaderPanel aria-label="User menu" expanded={panelOpen}>
+        <HeaderPanel aria-label="User menu" {...inertWhen(!panelOpen)} expanded={panelOpen}>
           <div className="p-4">
             <p className="t-heading-02">{FULL_NAME[role]}</p>
             <p className="t-helper-01 text-[var(--cds-text-secondary)]">{ROLE_LABEL[role]} · Branch 4472</p>
             <div className="mt-6">
-              <SelectField
-                label="Role (demo)"
-                options={['Relationship Banker', 'Credit Officer']}
+              {/* Values stay the internal Role; the options show the same label as the header (ADA-02). */}
+              <Select
+                id="after-role"
+                labelText="Role (demo)"
+                helperText="Available actions follow the selected role."
                 value={role}
-                placeholder="Choose a role"
-                helper="Available actions follow the selected role."
-                onChange={(v) => {
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                  const v = e.target.value as Role;
                   if (!v || v === role) return;
-                  setGlobal((g) => ({ ...g, role: v as Role, audit: [{ at: nowStamp(), user: USERS[v as Role], role: v as Role, event: 'Role changed', detail: `Signed in as ${v}` }, ...g.audit] }));
+                  setGlobal((g) => ({ ...g, role: v, audit: [{ at: nowStamp(), user: USERS[v], role: ROLE_LABEL[v], event: 'Role changed', detail: `Signed in as ${ROLE_LABEL[v]}` }, ...g.audit] }));
                 }}
-              />
+              >
+                {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <SelectItem key={r} value={r} text={ROLE_LABEL[r]} />)}
+              </Select>
             </div>
             <Button kind="tertiary" size="sm" className="mt-4" onClick={() => signOut('Signed out by user')}>Sign out</Button>
           </div>
         </HeaderPanel>
       </Header>
       <main id="after-main" tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
+        {/* Console and Evaluation show their title only in the header; give them a page heading for screen readers (FELIX-03). */}
+        {route.page === 'console' && <h1 className="sr-only">Securities Lending Console</h1>}
+        {route.page === 'evaluation' && <h1 className="sr-only">Evaluation · {reqId(route.id)}</h1>}
         {route.page === 'console' && <Console key={`c${jumpKey}`} tab={route.tab ?? 'pending'} expanded={route.expanded} onRoute={setRoute} />}
         {route.page === 'record' && <Record key={route.id} id={route.id} onRoute={setRoute} />}
         {route.page === 'evaluation' && <Evaluation key={`${route.id}-${jumpKey}`} id={route.id} ack={!!route.ack} onAck={(a) => setRoute({ page: 'evaluation', id: route.id, ack: a })} onRoute={setRoute} />}

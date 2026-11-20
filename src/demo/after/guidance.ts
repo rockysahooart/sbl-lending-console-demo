@@ -88,7 +88,7 @@ export function guidance(m: RequestModel): Guidance {
 
   // Non-blocking warnings, shown before submission.
   const warnings: Warning[] = [];
-  if (coverage >= 1 && coverage < 1.1) warnings.push({ id: 'thin', label: 'Coverage margin is thin', detail: `Estimated borrowing power exceeds the request by ${fmtMoney(margin)} (${fmtPct(coverage)}). A market decline before approval could create a shortfall.`, section: 'evaluation', anchor: 'total-evaluation' });
+  if (coverage >= 1 && coverage < 1.1) warnings.push({ id: 'thin', label: 'Coverage margin is thin', detail: `Total Maximum Borrowing Power exceeds the request by ${fmtMoney(margin)} (${fmtPct(coverage)}). A market decline before approval could create a shortfall.`, section: 'evaluation', anchor: 'total-evaluation' });
   if (req.pricing === 'exception') warnings.push({ id: 'pricing-ex', label: 'Pricing exception requested', detail: 'Pricing reviews exceptions separately. Approval is not guaranteed and can extend underwriting time.', section: 'loan', anchor: 'loan-details' });
   for (const r of ev.rows.filter((x) => x.status === 'reviewed')) {
     const rate = r.holdings.find((h) => h.concentrated)?.appliedRate;
@@ -108,7 +108,7 @@ export function guidance(m: RequestModel): Guidance {
       const a = reviewPending[0].account;
       return { attention: 'action', next: { label: 'Complete manual evaluation', detail: `${a.name} ${a.number} exceeds the 40% single-issuer limit and needs an advance rate from 35% to 60%.`, section: 'evaluation', anchor: 'manual-evaluation' }, exceptions, blocking, warnings, coverage, margin };
     }
-    return { attention: 'waiting', waitingOn: 'Relationship banker', exceptions, blocking, warnings, coverage, margin };
+    return { attention: 'waiting', waitingOn: 'Loan officer', exceptions, blocking, warnings, coverage, margin };
   }
 
   if (!blocking.length) return { attention: 'ready', next: { label: 'Submit', detail: 'All readiness checks are complete. Submit from Collaterals.', section: 'collateral', anchor: 'collaterals' }, exceptions, blocking, warnings, coverage, margin };

@@ -33,29 +33,41 @@ export function DemoShell() {
 }
 
 /* ------------------------------ Minimal demo bar ------------------------------ */
+const MODES: Mode[] = ['before', 'after'];
 function DemoBar() {
   const { mode, scenario, setScenario, setView } = useDemo();
   const switchMode = useSwitchMode();
+  const toggleRefs = useRef<Partial<Record<Mode, HTMLButtonElement | null>>>({});
+  const onToggleKey = (e: React.KeyboardEvent) => {
+    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : e.key === 'Home' ? -2 : e.key === 'End' ? 2 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const i = MODES.indexOf(mode);
+    const next = MODES[step === -2 ? 0 : step === 2 ? MODES.length - 1 : (i + step + MODES.length) % MODES.length];
+    toggleRefs.current[next]?.focus();
+    if (next !== mode) switchMode(next);
+  };
   return (
-    <nav aria-label="Prototype" className="demo-bar relative z-[10000] h-10 flex-shrink-0 bg-[#161616] text-white flex items-center gap-2 sm:gap-3 px-2 sm:px-4 text-[13px] overflow-x-auto">
-      <button type="button" onClick={() => setView('intro')} aria-label="Back to preface" className="text-[13px] text-[#C6C6C6] hover:text-white whitespace-nowrap px-1">←<span className="hidden sm:inline" aria-hidden="true"> Preface</span></button>
-      <span className="inline-flex items-center gap-1.5 sm:gap-2 h-6 px-1.5 sm:px-2 rounded-sm border border-[#6F6F6F] text-[12px] text-[#C6C6C6] whitespace-nowrap">
+    <nav aria-label="Prototype" className="demo-bar relative z-[10000] h-10 pointer-coarse:h-12 flex-shrink-0 bg-[#161616] text-white flex items-center gap-1.5 sm:gap-3 px-1.5 min-[360px]:px-2 sm:px-4 text-[13px] overflow-x-auto">
+      <button type="button" onClick={() => setView('intro')} aria-label="Back to preface" className="text-[13px] text-[#C6C6C6] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#78A9FF] whitespace-nowrap px-1 inline-flex items-center justify-center min-w-8 h-8 pointer-coarse:min-w-9 pointer-coarse:h-10 sm:min-w-0">←<span className="hidden sm:inline ml-1" aria-hidden="true">Preface</span></button>
+      <span className="inline-flex items-center gap-1 min-[360px]:gap-1.5 sm:gap-2 h-6 px-1 min-[360px]:px-1.5 sm:px-2 rounded-sm border border-[#6F6F6F] text-[12px] text-[#C6C6C6] whitespace-nowrap">
         <span className="w-1.5 h-1.5 rounded-full bg-[#F5A742]" aria-hidden="true" /> <span className="hidden md:inline">Portfolio Demo · Fictional Data</span><span className="md:hidden">Fictional</span>
       </span>
-      <div className="ml-auto flex items-center gap-2 sm:gap-3">
+      <div className="ml-auto flex items-center gap-1.5 sm:gap-3">
         <label htmlFor="scenario-select" className="sr-only">Scenario</label>
         <select
           id="scenario-select"
           value={scenario}
           onChange={(e) => setScenario(e.target.value as ScenarioId)}
-          className="h-7 max-w-[112px] sm:max-w-none text-[13px] bg-[#262626] border border-[#525252] rounded-sm px-1.5 sm:px-2 text-white focus:outline focus:outline-2 focus:outline-[#78A9FF]"
+          className="h-7 pointer-coarse:h-10 max-w-[84px] min-[360px]:max-w-[112px] sm:max-w-none text-[13px] bg-[#262626] border border-[#525252] rounded-sm px-1.5 sm:px-2 text-white focus:outline focus:outline-2 focus:outline-[#78A9FF]"
         >
           {SCENARIOS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
-        <div role="radiogroup" aria-label="Experience" className="flex border border-[#525252] rounded-sm overflow-hidden flex-shrink-0">
-          {(['before', 'after'] as Mode[]).map((m) => (
-            <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => switchMode(m)}
-              className={cx('h-7 px-2.5 sm:px-3 text-[13px] font-medium whitespace-nowrap', mode === m ? 'bg-white text-[#161616]' : 'text-[#C6C6C6] hover:bg-[#262626]')}>
+        {/* ARIA radio group (FELIX-07): one Tab stop on the checked option; arrow keys move and select, as the role promises. */}
+        <div role="radiogroup" aria-label="Experience" onKeyDown={onToggleKey} className="flex border border-[#525252] rounded-sm overflow-hidden flex-shrink-0">
+          {MODES.map((m) => (
+            <button key={m} ref={(el) => { toggleRefs.current[m] = el; }} type="button" role="radio" aria-checked={mode === m} tabIndex={mode === m ? 0 : -1} onClick={() => switchMode(m)}
+              className={cx('h-7 pointer-coarse:h-10 px-1.5 min-[360px]:px-2.5 sm:px-3 pointer-coarse:min-w-11 text-[13px] font-medium whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#78A9FF]', mode === m ? 'bg-white text-[#161616]' : 'text-[#C6C6C6] hover:bg-[#262626]')}>
               {m === 'before' ? 'Before' : 'After'}
             </button>
           ))}
@@ -105,7 +117,9 @@ function useHistorySync() {
     const hash = toHash(mode, here);
     if (window.location.hash === hash) { last.current = { mode, loc: here }; applying.current = false; return; }
     const prev = last.current;
-    const minor = prev && prev.mode === mode && prev.loc.screen === here.screen && (prev.loc.appId ?? '') === (here.appId ?? '') && (prev.loc.step ?? 0) === (here.step ?? 0);
+    // THEO-06: Evaluation and its Acknowledgment dialog are one screen for history (replace, not push).
+    const sameScreen = prev?.loc.screen === here.screen || [prev?.loc.screen, here.screen].every((x) => x === 'evaluation' || x === 'acknowledgment');
+    const minor = prev && prev.mode === mode && sameScreen && (prev.loc.appId ?? '') === (here.appId ?? '') && (prev.loc.step ?? 0) === (here.step ?? 0);
     if (applying.current || minor || !prev) window.history.replaceState(null, '', hash);
     else window.history.pushState(null, '', hash);
     applying.current = false;
@@ -377,7 +391,7 @@ function Preface() {
               <div className="flex gap-6">
                 {(['before', 'after'] as Mode[]).map((m) => (
                   <label key={m} className="inline-flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="radio" name="start-mode" checked={startMode === m} onChange={() => setStartMode(m)} className="w-4 h-4 accent-[#0066CC]" />
+                    <input type="radio" name="start-mode" checked={startMode === m} onChange={() => setStartMode(m)} className="w-4 h-4 accent-[#0066CC] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0066CC]" />
                     {m === 'before' ? 'Before (original)' : 'After (redesign)'}
                   </label>
                 ))}

@@ -1,0 +1,32 @@
+// Owner: Felix — implementation round (see docs/design-team-change-log.md).
+// Only Felix edits this file. Loaded after carbon.scss, so rules here refine it.
+@use '@carbon/react/scss/breakpoint' as bp;
+@use '@carbon/react/scss/type';
+
+// FELIX-05 — The shared base layer (src/styles/theme.css: `* { outline-ring/50 }`) tints every
+// browser-default focus ring a 50 % grey (~1.5:1). Inside After, a default ring uses the Carbon focus
+// colour instead. :where() keeps this at the lowest specificity, so Carbon's own focus styles still win.
+:where(.sbl-after *):focus-visible {
+  outline-color: var(--cds-focus);
+}
+
+.sbl-after {
+  // FELIX-05 — Row expand chevrons (Console, Submitted, Collaterals) showed only that faint ring.
+  // Carbon's 2px focus, drawn inside the cell so it is never clipped by the table.
+  .cds--table-expand__button:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -2px;
+  }
+
+  // Verification (regression from IRIS-03 × the Gray 20 current row): a tertiary button's blue text on
+  // Gray 20 is 4.21:1. Give it its own White surface inside a selected row (6.0:1); hover/active keep Carbon's fill.
+  .cds--data-table--selected .cds--btn--tertiary:not(:hover):not(:active) {
+    background-color: var(--cds-background);
+  }
+
+  // FELIX-01 — Page headings receive focus programmatically on route change so screen readers announce
+  // the new screen. They are not interactive, so no ring is drawn on them.
+  h1[tabindex='-1']:focus {
+    outline: none;
+  }
+}
