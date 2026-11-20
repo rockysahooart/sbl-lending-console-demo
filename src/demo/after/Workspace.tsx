@@ -48,7 +48,10 @@ const yn = [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }];
  *   form    900px  — inputs, questions, attestations
  *   record  1120px — structured client information and summaries
  *   full    none   — data tables, collateral inventory, evaluation
+ * Each section's content sits in one container, centred between the navigation and
+ * the status panel, so every block in the section shares the same left edge.
  */
+const SECTION_MAX: Record<Section, string | undefined> = { client: '1120px', collateral: undefined, structure: '900px', review: '1120px' };
 
 function focusAnchor(id: string) {
   // After the section renders and the workspace scroll resets.
@@ -113,10 +116,12 @@ export function Workspace({ route, onRoute }: { route: { page: 'request'; id: Sc
         </nav>
         <fieldset disabled={locked} className="min-w-0">
           <legend className="sr-only">{SECTIONS.find((x) => x.key === section)!.label}</legend>
+          <div className="mx-auto" style={{ maxWidth: SECTION_MAX[section] }}>
           {section === 'client' && <ClientSection m={m} onNext={() => go('collateral')} />}
           {section === 'collateral' && <CollateralSection m={m} onNext={() => go('structure')} />}
           {section === 'structure' && <StructureSection m={m} onNext={() => go('review')} />}
           {section === 'review' && <ReviewSection m={m} onGo={go} onSubmitted={() => onRoute({ page: 'confirmation', id: route.id })} />}
+          </div>
         </fieldset>
         <SummaryPanel m={m} onGo={go} section={section} />
       </div>
@@ -924,7 +929,7 @@ function SummaryPanel({ m, onGo, section }: { m: RequestModel; onGo: (s: Section
 function Confirmation({ m, onRoute }: { m: RequestModel; onRoute: (r: Route) => void }) {
   const { s, req, ev } = m;
   return (
-    <div className="px-4 sm:px-8 py-8 max-w-[960px]">
+    <div className="px-4 sm:px-8 py-8 max-w-[960px] mx-auto">
       <div className="bg-[var(--cds-layer-01)] p-8">
         <InlineNotification kind="success" lowContrast hideCloseButton className="!max-w-none" title="Submitted to underwriting" subtitle={`${s.requestId}, ${s.entityName ?? s.primary.name}. Submitted ${req.submittedAt}.`} />
         <dl className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">

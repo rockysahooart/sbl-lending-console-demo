@@ -27,7 +27,7 @@ export function Underwriting({ focusId, onRoute }: { focusId?: string; onRoute: 
   const target = rows.find((r) => r.key === confirmFor);
 
   return (
-    <div className="px-4 sm:px-8 py-8 max-w-[1920px]">
+    <div className="px-4 sm:px-8 py-8 max-w-[1920px] mx-auto">
       <PageHeader title="Underwriting" description="Credit Underwriting owns these decisions. You’re notified when a decision or condition needs your response." />
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_440px] gap-6 items-start">
         <TableContainer title="Requests in underwriting">
@@ -175,7 +175,7 @@ export function ActiveCredit({ focusId, onRoute }: { focusId?: string; onRoute: 
   }).sort((a, b) => a.rank - b.rank);
 
   return (
-    <div className="px-4 sm:px-8 py-8 max-w-[1920px]">
+    <div className="px-4 sm:px-8 py-8 max-w-[1920px] mx-auto">
       <PageHeader title="Active credit" description="Approved credit lines you service. Lines that need attention come first." />
       <section aria-labelledby="attn-h" className="mb-10">
         <h2 id="attn-h" className="t-heading-03">Needs attention <span className="tabular-nums">({attention.length})</span></h2>

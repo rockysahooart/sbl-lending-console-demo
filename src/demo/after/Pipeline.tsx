@@ -86,7 +86,7 @@ export function Pipeline({ onOpen }: { onOpen: (r: Route) => void }) {
   const top = action[0];
 
   return (
-    <div className="px-4 sm:px-8 py-8 max-w-[1920px]">
+    <div className="px-4 sm:px-8 py-8 max-w-[1920px] mx-auto">
       <div className="flex flex-wrap items-end justify-between gap-6 mb-6">
         <div>
           <h1 className="t-heading-05">Pipeline</h1>
