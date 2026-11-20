@@ -220,6 +220,33 @@ function CompareBody() {
   );
 }
 
+/** A true-to-size, non-interactive replica of the prototype's top bar that shows where the Before/After switch lives. */
+function ToggleDiagram() {
+  return (
+    <figure className="mt-4">
+      <div aria-hidden="true" className="h-10 bg-[#161616] text-white flex items-center gap-2 sm:gap-3 px-2 sm:px-4 text-[13px] select-none">
+        <span className="text-[#C6C6C6] whitespace-nowrap px-1">←<span className="hidden sm:inline"> Preface</span></span>
+        <span className="inline-flex items-center gap-1.5 sm:gap-2 h-6 px-1.5 sm:px-2 rounded-sm border border-[#6F6F6F] text-[12px] text-[#C6C6C6] whitespace-nowrap">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#F5A742]" /> <span className="hidden md:inline">Portfolio Demo · Fictional Data</span><span className="md:hidden">Fictional</span>
+        </span>
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <span className="hidden sm:inline-flex h-7 items-center gap-2 bg-[#262626] border border-[#525252] rounded-sm px-2 text-white whitespace-nowrap">Single borrower <span className="text-[10px] text-[#C6C6C6]">▾</span></span>
+          <span className="flex border border-[#525252] rounded-sm overflow-hidden outline outline-2 outline-offset-[3px] outline-[#78A9FF]">
+            <span className="h-7 px-2.5 sm:px-3 inline-flex items-center font-medium bg-white text-[#161616]">Before</span>
+            <span className="h-7 px-2.5 sm:px-3 inline-flex items-center font-medium text-[#C6C6C6]">After</span>
+          </span>
+        </div>
+      </div>
+      <figcaption className="flex justify-end">
+        <span className="relative pt-4 pr-2 sm:pr-4 text-sm text-[#393939] text-right max-w-[420px]">
+          <span aria-hidden="true" className="absolute top-0 right-[64px] sm:right-[76px] h-3 w-px bg-[#0066CC]" />
+          Switch between Before and After using the controls at the top of the prototype. Your scenario stays open.
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
 /* ------------------------------------ Preface ------------------------------------ */
 function Preface() {
   const { setView, setMode, setScenario, requestJump, metrics } = useDemo();
@@ -280,7 +307,8 @@ function Preface() {
 
         <section aria-labelledby="enter-h" className="mt-6 bg-white border border-[#E0E0E0] p-5">
           <h2 id="enter-h" className="text-base font-semibold">Part 2 · Interactive prototype</h2>
-          <p className="mt-1 text-sm text-[#393939]"><b className="font-medium text-[#161616]">Before</b> is the original console; <b className="font-medium text-[#161616]">After</b> is my redesign, including new proposals. Toggle in the top bar — your scenario stays open.</p>
+          <p className="mt-1 text-sm text-[#393939]"><b className="font-medium text-[#161616]">Before</b> is the original console; <b className="font-medium text-[#161616]">After</b> is my redesign, including new proposals.</p>
+          <ToggleDiagram />
           <div className="mt-4 grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
             <fieldset>
               <legend className="text-[12px] font-medium text-[#525252] mb-2">Start in</legend>
