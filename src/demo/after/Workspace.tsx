@@ -402,7 +402,7 @@ function FooterSlot({ children }: { children: ReactNode }) {
   return el ? createPortal(children, el) : null;
 }
 
-function IdCard({ role, person, sub, requestId, idNumber, expires, expired }: { role: string; person: Person; sub?: string; requestId: string; idNumber: string; expires: string; expired: boolean }) {
+function IdCard({ role, person, sub, requestId, idNumber, expires, expired, verification }: { role: string; person: Person; sub?: string; requestId: string; idNumber: string; expires: string; expired: boolean; verification?: ReactNode }) {
   const initials = person.name.split(' ').map((x) => x[0]).join('').slice(0, 2);
   return (
     <section className={`id-card${expired ? ' is-expired' : ''}`} aria-label={`${role} identification card: ${person.name}`}>
@@ -412,6 +412,8 @@ function IdCard({ role, person, sub, requestId, idNumber, expires, expired }: { 
         <div className="id-card__main">
           <p className="t-heading-03">{person.name}</p>
           {sub && <p className="t-helper-01 text-[var(--cds-text-secondary)]">{sub}</p>}
+          {/* Entity-level statuses belong to the person they describe: a verification cluster under the name. */}
+          {verification && <div className="id-card__verify" role="group" aria-label={`Verification for ${person.name}`}>{verification}</div>}
           {/* Same field positions as the original card: DOB | MDM ID, SSN | Power ID, then Phone and Email full width. */}
           <dl className="id-card__ids grid grid-cols-2 gap-x-6 gap-y-3">
             <KV label="DOB" value={person.dob} mono />
@@ -430,7 +432,8 @@ function IdCard({ role, person, sub, requestId, idNumber, expires, expired }: { 
 function Screening({ date = '11/18/2025', idExpired = false }: { date?: string; idExpired?: boolean }) {
   return (
     <span className="inline-flex flex-wrap gap-2">
-      {idExpired ? <Tag tone="error">Identity on file {date} · ID expired</Tag> : <Tag tone="success">Identity verified {date}</Tag>}
+      {/* The expiry itself is stated once, on the ID field and its notification; here the record is neutral. */}
+      {idExpired ? <Tag tone="neutral">Identity on file {date}</Tag> : <Tag tone="success">Identity verified {date}</Tag>}
       <Tag tone="success">Sanctions screening: no match {date}</Tag>
     </span>
   );
@@ -466,7 +469,7 @@ function CustomerStep({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: strin
         </div>
       </StepSection>
 
-      <StepSection id="customer-info" title="Customer Information" right={<Screening />} description="From the client record of 11/18/2025. Read-only; request a correction if anything is out of date.">
+      <StepSection id="customer-info" title="Customer Information" description="From the client record of 11/18/2025. Read-only; request a correction if anything is out of date.">
         <IdCard
           role={s.entityName ? 'Authorized Signer' : 'Primary Borrower'}
           person={p}
@@ -475,10 +478,11 @@ function CustomerStep({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: strin
           idNumber={p.idNumber}
           expires={p.idExpires}
           expired={false}
+          verification={<Screening />}
         />
         {/* Spatial familiarity: the original's three rows (address · identity · employment) keep their order and
             grouping, so each row starts where bankers expect it; only the column count adapts to the narrower record. */}
-        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5 mt-6" aria-label="Address">
+        <dl className="familiar-grid mt-6" aria-label="Address">
           <KV label="Address Line 1" value={p.address1} />
           <KV label="Address Line 2" value={p.address2 || '—'} />
           <KV label="City" value={p.city} />
@@ -486,14 +490,14 @@ function CustomerStep({ m, onGo }: { m: RequestModel; onGo: (p: Place, a?: strin
           <KV label="ZIP Code" value={p.zip} mono />
           <KV label="Customer Since" value={p.customerSince} mono />
         </dl>
-        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5 mt-5" aria-label="Identity">
+        <dl className="familiar-grid mt-5" aria-label="Identity">
           <KV label="Proof of Identity" value={p.idType} />
           <KV label="ID Number" value={p.idNumber} mono />
           <KV label="Place of Issuance" value={p.idPlace} />
           <KV label="Date Issued" value={p.idIssued} mono />
           <KV label="Date of Expiration" value={<span className="inline-flex flex-wrap items-center gap-2"><span className="tabular-nums">{p.idExpires}</span><Tag tone="success">Valid</Tag></span>} />
         </dl>
-        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5 mt-5" aria-label="Employment">
+        <dl className="familiar-grid mt-5" aria-label="Employment">
           <KV label="Employment Status" value={p.employmentStatus} />
           <KV label="Employment Title" value={p.employmentTitle} />
           <KV label="Citizenship Status" value={p.citizenship} />
@@ -635,7 +639,7 @@ function CoBorrowerSearch({ m }: { m: RequestModel }) {
           {results.length === 0 ? (
             <p className="t-body-01">No customer matches {label} “{searched}”. Check the number and search again.</p>
           ) : (
-            <ul className="border border-[var(--cds-border-subtle-01)]">
+            <ul className="border border-[var(--cds-border-subtle-01)] max-w-2xl">
               {results.map((p) => (
                 <li key={p.id} className="px-4 py-2 flex items-center justify-between gap-4 border-b border-[var(--cds-border-subtle-01)] last:border-0">
                   <span className="t-body-01">{p.name} <span className="t-helper-01 text-[var(--cds-text-secondary)]">MDM ID {p.mdmId} · Power ID {p.powerId}</span></span>
@@ -675,14 +679,16 @@ function CoBorrowerDetails({ m }: { m: RequestModel }) {
         idNumber={req.coIdUpdate.saved ? req.coIdUpdate.number : co.idNumber}
         expires={req.coIdUpdate.saved ? req.coIdUpdate.expires : co.idExpires}
         expired={coIdExpired}
+        verification={<Screening idExpired={coIdExpired} />}
       />
+      {/* The ID facts, the expiry problem and its fix stay at the card's width, so they read as part of this person's record. */}
+      <div className="id-card-width space-y-6">
       <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-5">
         <KV label="Proof of Identity" value={co.idType} />
         <KV label="ID Number" value={req.coIdUpdate.saved ? req.coIdUpdate.number : co.idNumber} mono />
         <KV label="Place of Issuance" value={co.idPlace} />
         <KV label="Date of Expiration" value={<span className="inline-flex flex-wrap items-center gap-2"><span className="tabular-nums">{req.coIdUpdate.saved ? req.coIdUpdate.expires : co.idExpires}</span><Tag tone={coIdExpired ? 'error' : 'success'}>{coIdExpired ? 'Expired' : 'Valid'}</Tag></span>} />
       </dl>
-      <dl><KV label="Screening" value={<Screening idExpired={coIdExpired} />} /></dl>
       {coIdExpired && (
         <div>
           <InlineNotification kind="error" lowContrast hideCloseButton className="!max-w-none" title="Identification expired" subtitle="Record a current, unexpired government-issued ID before you submit this request." />
@@ -693,6 +699,7 @@ function CoBorrowerDetails({ m }: { m: RequestModel }) {
           </div>
         </div>
       )}
+      </div>
       <Button kind="danger--tertiary" size="sm" onClick={() => setConfirmRemove(true)}>Remove co-borrower</Button>
       <Modal
         open={confirmRemove}
@@ -764,7 +771,7 @@ function LoanStep({ m }: { m: RequestModel }) {
       </StepSection>
 
       <StepSection id="product" title="Product Details" description="Set by the product. Read-only.">
-        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5" aria-label="Product">
+        <dl className="familiar-grid" aria-label="Product">
           <KV label="Product Category" value="Line of Credit" />
           <KV label="Product Type" value="QLP 2" />
           <KV label="Personal Loan Purpose" value="Personal Only" />
@@ -772,7 +779,7 @@ function LoanStep({ m }: { m: RequestModel }) {
           <KV label="Loan Secured By" value="Marketable securities" />
           <KV label="RM Officer" value={s.createdBy} />
         </dl>
-        <dl className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-5 mt-5" aria-label="Rate and disclosures">
+        <dl className="familiar-grid mt-5" aria-label="Rate and disclosures">
           <KV label="Interest Rate Type" value="Variable" />
           <KV label="Rate Index" value="SOFR - Daily" />
           <KV label="Payment Structure" value="Interest Only" />

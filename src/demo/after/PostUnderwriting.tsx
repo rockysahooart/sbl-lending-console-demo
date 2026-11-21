@@ -220,7 +220,7 @@ export function Underwriting({ focusId, fix, onRoute, onSelect }: { focusId?: st
                 <h3 id="refcond-h" className="t-heading-02">Conditions</h3>
                 <ul className="mt-2 border-t border-[var(--cds-border-subtle-01)]">
                   {cur.ref.conditions.map((c) => (
-                    <li key={c} className="py-3 border-b border-[var(--cds-border-subtle-01)] flex items-start justify-between gap-3"><p className="t-body-01">{c}</p><Tag tone="warning">Open</Tag></li>
+                    <li key={c} className="py-3 border-b border-[var(--cds-border-subtle-01)] flex items-start gap-3"><span className="shrink-0"><Tag tone="warning">Open</Tag></span><p className="t-body-01">{c}</p></li>
                   ))}
                 </ul>
               </section>
@@ -344,6 +344,7 @@ export function Underwriting({ focusId, fix, onRoute, onSelect }: { focusId?: st
 interface LineVM extends ActiveLine { scenarioId?: ScenarioId }
 
 export function ActiveCredit({ focusId, onRoute, onSelect }: { focusId?: string; onRoute: (r: Route) => void; onSelect?: (id?: string) => void }) {
+  const [reminded, setReminded] = useState<string[]>([]);
   const lines = useScenarioLines();
   const { global, setGlobal, log } = useAudit();
   const [confirmSign, setConfirmSign] = useState<string | null>(null);
@@ -485,9 +486,9 @@ export function ActiveCredit({ focusId, onRoute, onSelect }: { focusId?: string;
         <div className="py-4 border-b border-[var(--cds-border-subtle-00)] flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="t-heading-03">{cur.client}</h2>
-            <p className="t-helper-01 text-[var(--cds-text-secondary)]">{cur.id} · Approved {cur.approvedOn}</p>
+            <p className="t-helper-01 text-[var(--cds-text-secondary)] flex flex-wrap items-center gap-x-3">{cur.id} · Approved {cur.approvedOn}
+              {cur.scenarioId && <Button kind="ghost" size="sm" className="!px-0 !min-h-0" onClick={() => onRoute({ page: 'request', id: cur.scenarioId!, section: 'customer' })}>View loan details</Button>}</p>
           </div>
-          {cur.scenarioId && <Button kind="ghost" size="sm" onClick={() => onRoute({ page: 'request', id: cur.scenarioId!, section: 'customer' })}>View loan details</Button>}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="py-6 lg:pr-0">
@@ -542,15 +543,18 @@ export function ActiveCredit({ focusId, onRoute, onSelect }: { focusId?: string;
             <h3 className="t-heading-02 mb-3">Documentation</h3>
             <ul className="space-y-2 t-body-01">
               {cur.docs.map((d) => (
-                <li key={d.name} className="flex items-center justify-between gap-3">
+                <li key={d.name} className="grid grid-cols-[minmax(0,13rem)_auto_auto] items-center justify-start gap-3">
                   <span>{d.name}</span>
                   <Tag tone={d.status === 'Complete' ? 'success' : d.status === 'Pending signature' ? 'warning' : 'error'}>{d.status}</Tag>
+                  {/* The reminder belongs to the outstanding document it chases. */}
+                  {d.status !== 'Complete' && (reminded.includes(`${cur.id}:${d.name}`)
+                    ? <span className="t-helper-01 text-[var(--cds-text-secondary)]">Reminder sent</span>
+                    : <Button kind="ghost" size="sm" onClick={() => { setReminded((r) => [...r, `${cur.id}:${d.name}`]); log('Document reminder sent', `Reminder sent to the client: ${d.name}`, cur.id); }} aria-label={`Send reminder: ${d.name}`}>Send reminder</Button>)}
                 </li>
               ))}
             </ul>
             {cur.docs.some((d) => d.status !== 'Complete') && (
               <div className="mt-4 flex flex-wrap gap-3">
-                <Button kind="tertiary" size="sm" onClick={() => log('Document reminder sent', 'Reminder sent to the client', cur.id)}>Send document reminder</Button>
                 {cur.scenarioId && <Button kind="ghost" size="sm" onClick={() => setConfirmSign(cur.id)}>Simulate signatures</Button>}
               </div>
             )}
@@ -613,13 +617,12 @@ function Finding({ c, client, requested, onRespond }: { c: Condition; client: st
   const doneLabel = kind === 'decision' ? 'Response recorded' : kind === 'question' ? 'Answered' : 'Provided';
   return (
     <div className={cx('finding', `t-${kind}`, !open && 'is-done')}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="t-label-01 text-[var(--cds-text-secondary)]">{KIND_LABEL[kind]}</p>
-          <p className="t-body-01 mt-0.5">{c.text}</p>
-        </div>
+      {/* The finding's status sits on its own header line, beside its type. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="t-label-01 text-[var(--cds-text-secondary)]">{KIND_LABEL[kind]}</p>
         <Tag tone={open ? 'warning' : 'success'}>{open ? 'Open' : doneLabel}</Tag>
       </div>
+      <p className="t-body-01 mt-1">{c.text}</p>
       {kind === 'decision' && c.terms != null && (
         <dl className="grid grid-cols-2 gap-4 mt-3 max-w-md"><KV label="Requested" value={fmtMoney(requested)} mono /><KV label="Revised limit offered" value={fmtMoney(c.terms)} mono /></dl>
       )}

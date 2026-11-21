@@ -328,9 +328,10 @@ function ManualEvaluation({ m, rows, total }: { m: RequestModel; rows: RequestMo
                     ))}
                   </TableBody>
                 </Table>
-                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                {/* The account's review action sits directly under its holdings, left-aligned with them. */}
+                <div className="flex flex-wrap items-center gap-3 px-4 py-3">
                   {/* PAUL-04: while under review the tile above already states this rationale; keep it here only once reviewed. */}
-                  {r.status === 'review' ? <span aria-hidden="true" /> : <p className="t-helper-01 text-[var(--cds-text-secondary)] max-w-3xl">{r.explanation}</p>}
+                  {r.status === 'review' ? null : <p className="t-helper-01 text-[var(--cds-text-secondary)] max-w-3xl">{r.explanation}</p>}
                   {r.status === 'review' && role === 'Relationship Banker' && (requested ? (
                     <span className="inline-flex flex-wrap items-center gap-3">
                       <Tag tone="pending">Awaiting credit officer review</Tag>
